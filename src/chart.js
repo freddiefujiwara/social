@@ -38,10 +38,6 @@ export function formatDateFull(yyyymmdd) {
   return `${s.slice(0, 4)}年${Number(s.slice(4, 6))}月${Number(s.slice(6, 8))}日`;
 }
 
-export function tooltipText(point) {
-  return `${formatDateFull(point.date)} · ${Number(point.views).toLocaleString()}回`;
-}
-
 // --- Y axis scale (options.yAxis on buildLineChartSvg) ---
 // The axis domain follows the data instead of starting at zero:
 // the trend series are large rolling totals (hundreds of

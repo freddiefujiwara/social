@@ -37,7 +37,7 @@
 //   (genreStatsForMedia) groups by genre name, so the split
 //   rules add up into a single row.
 
-import { captionHead, formatCount, mediaTypeLabel } from "./api.js";
+import { captionHead, mediaTypeLabel } from "./api.js";
 
 const isNum = (value) => typeof value === "number" && Number.isFinite(value);
 
