@@ -6,7 +6,6 @@ import {
   formatDateLabel,
   formatDateFull,
   niceAxisScale,
-  tooltipText,
   tickIndices,
 } from "../src/chart.js";
 
@@ -244,15 +243,6 @@ describe("date formatting", () => {
     expect(formatDateLabel("20261102")).toBe("11/2");
     expect(formatDateLabel("20261028")).toBe("10/28");
     expect(formatDateFull("20261102")).toBe("2026年11月2日");
-  });
-
-  it("builds the tooltip text", () => {
-    expect(tooltipText({ date: "20261102", views: 962 })).toBe(
-      "2026年11月2日 · 962回",
-    );
-    expect(tooltipText({ date: "20261105", views: "1053" })).toBe(
-      "2026年11月5日 · 1,053回",
-    );
   });
 });
 

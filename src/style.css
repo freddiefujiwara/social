@@ -205,29 +205,6 @@ textarea:disabled {
   margin-top: 12px;
 }
 
-.post-button {
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: #ffffff;
-  border-radius: 999px;
-  padding: 6px 20px;
-  font: inherit;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.post-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-#status {
-  white-space: pre-wrap;
-  margin-top: 12px;
-}
-
 .share-url-row {
   display: flex;
   gap: 8px;
@@ -244,12 +221,6 @@ textarea:disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 8px 12px;
-}
-
-#status a {
-  color: var(--link);
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
 
 @media (max-width: 700px) {
@@ -396,11 +367,6 @@ textarea:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.treemap-tile-metric {
-  font-size: 12px;
-  opacity: 0.8;
 }
 
 .treemap-tile-value {

@@ -3255,10 +3255,11 @@ const chartTooltipEl = document.getElementById("chart-tooltip");
 
 function showChartTooltip(pointEl) {
   // The date stays readable; the view count rides in a
-  // .privacy-mask span (tooltipText in chart.js composes the
-  // same wording as plain text for tests). This tooltip serves
-  // the blog's daily chart, whose figures are unpublished
-  // 28-day rollups, so the count masks like any raw count.
+  // .privacy-mask span, which is why the wording is composed
+  // here instead of as one plain-text string. This tooltip
+  // serves the blog's daily chart, whose figures are
+  // unpublished 28-day rollups, so the count masks like any
+  // raw count.
   chartTooltipEl.textContent = "";
   chartTooltipEl.append(`${formatDateFull(pointEl.dataset.date)} · `);
   const count = document.createElement("span");
