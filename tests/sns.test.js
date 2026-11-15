@@ -28,6 +28,9 @@ import {
   demographicsPyramid,
   topDemographics,
   sortMedia,
+  mediaWatchRate,
+  withWatchRate,
+  formatWatchRate,
   captionHead,
   mediaTypeLabel,
   youtubeVideos,
@@ -110,6 +113,7 @@ const DETAIL = {
         saves: 3,
         avg_watch_sec: 8.25,
         total_watch_sec: 825,
+        duration_sec: 22,
       },
       {
         id: "m2",
@@ -1170,6 +1174,54 @@ describe("media rows", () => {
     const input = [...rows];
     sortMedia(input, "likes", "desc");
     expect(input.map((r) => r.id)).toEqual(["m1", "m2"]);
+  });
+
+  it("mediaWatchRate divides the average watch time by the duration", () => {
+    expect(mediaWatchRate(rows[0])).toBeCloseTo(37.5);
+    // Looping can push the average past the full length; the
+    // rate is not capped at 100.
+    expect(
+      mediaWatchRate({ avg_watch_sec: 45, duration_sec: 30 }),
+    ).toBeCloseTo(150);
+  });
+
+  it("mediaWatchRate is null without a usable duration or average", () => {
+    // The photo row carries neither figure.
+    expect(mediaWatchRate(rows[1])).toBeNull();
+    // A collection that predates duration_sec.
+    expect(mediaWatchRate({ avg_watch_sec: 8.25 })).toBeNull();
+    expect(
+      mediaWatchRate({ avg_watch_sec: 8.25, duration_sec: null }),
+    ).toBeNull();
+    expect(mediaWatchRate({ avg_watch_sec: 8.25, duration_sec: 0 })).toBeNull();
+    expect(mediaWatchRate({ duration_sec: 22 })).toBeNull();
+    expect(mediaWatchRate(null)).toBeNull();
+  });
+
+  it("withWatchRate attaches the rate and sortMedia orders by it", () => {
+    const rated = [
+      withWatchRate({ id: "a", avg_watch_sec: 5, duration_sec: 20 }),
+      withWatchRate({ id: "b", avg_watch_sec: 8.25, duration_sec: 22 }),
+      withWatchRate({ id: "c", avg_watch_sec: null, duration_sec: null }),
+    ];
+    expect(rated.map((r) => r.watch_rate)).toEqual([25, 37.5, null]);
+    expect(sortMedia(rated, "watch_rate", "desc").map((r) => r.id)).toEqual([
+      "b",
+      "a",
+      "c",
+    ]);
+    expect(sortMedia(rated, "watch_rate", "asc").map((r) => r.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("formatWatchRate shows one decimal and a percent sign", () => {
+    expect(formatWatchRate(37.5)).toBe("37.5%");
+    expect(formatWatchRate(150)).toBe("150.0%");
+    expect(formatWatchRate(null)).toBe("—");
+    expect(formatWatchRate(undefined)).toBe("—");
   });
 
   it("captionHead collapses whitespace and truncates", () => {

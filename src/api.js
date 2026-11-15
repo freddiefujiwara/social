@@ -268,6 +268,37 @@ export function formatSeconds(value) {
   return `${Math.round(value * 10) / 10}秒`;
 }
 
+// The average watch rate of one media row, as a percent: the
+// average watch time (avg_watch_sec) over the video's length
+// (duration_sec, collected alongside the other per-media figures)
+// times 100 — the reel counterpart of the blog table's completion
+// rate. Looping can push the average past the full length, so the
+// rate can exceed 100 and is shown as-is. A row whose duration or
+// average watch time is missing or not positive (a photo, a
+// collection that predates duration_sec) yields null.
+export function mediaWatchRate(media) {
+  const avg = media?.avg_watch_sec;
+  const duration = media?.duration_sec;
+  if (!isNum(avg) || !isNum(duration) || duration <= 0) {
+    return null;
+  }
+  return (avg / duration) * 100;
+}
+
+// One media row with its watch rate attached as `watch_rate`
+// (null when mediaWatchRate cannot compute one), so the per-post
+// table can sort and render it like any other column.
+export function withWatchRate(media) {
+  return { ...media, watch_rate: mediaWatchRate(media) };
+}
+
+// A watch-rate percent with one decimal; "—" when missing. Like
+// every percentage on the Instagram tab the value itself is a
+// ratio, not a count, so the cell is not privacy-masked.
+export function formatWatchRate(value) {
+  return isNum(value) ? `${value.toFixed(1)}%` : "—";
+}
+
 const jstDateTime = new Intl.DateTimeFormat("ja-JP", {
   timeZone: "Asia/Tokyo",
   year: "numeric",
