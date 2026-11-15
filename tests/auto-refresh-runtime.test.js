@@ -40,6 +40,7 @@ const mediaRow = (id, caption, views) => ({
   saves: 3,
   avg_watch_sec: 8,
   total_watch_sec: 800,
+  duration_sec: 20,
 });
 
 const detailPayload = (collectedAt, musicViews) =>
@@ -151,6 +152,23 @@ describe("dashboard auto-refresh (runtime)", () => {
     expect(detailCalls).toBe(1);
     expect(historyCalls).toBe(1);
     expect(mediaBody().textContent).toContain("111");
+
+    // The per-post table carries the watch-rate column: the
+    // header is sortable under watch_rate, and each row shows
+    // avg_watch_sec / duration_sec as a percent (8s of 20s =
+    // 40.0%) in a cell that is not privacy-masked.
+    const watchHeader = document.querySelector(
+      '#sns-media-table th[data-sort-key="watch_rate"]',
+    );
+    expect(watchHeader).toBeTruthy();
+    expect(watchHeader.textContent).toContain("平均視聴率");
+    const firstRowCells = mediaBody().querySelectorAll("tr:first-child td");
+    expect(firstRowCells).toHaveLength(13);
+    const rateCell = [...firstRowCells].find(
+      (td) => td.textContent === "40.0%",
+    );
+    expect(rateCell).toBeTruthy();
+    expect(rateCell.className).not.toContain("amount-value");
 
     // Open the Instagram tab and narrow the per-post table to
     // the 音楽 genre; both must survive the refresh.

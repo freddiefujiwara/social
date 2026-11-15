@@ -49,6 +49,8 @@ import {
   articleViewStats,
   formatCount,
   formatSeconds,
+  formatWatchRate,
+  withWatchRate,
   formatJstDateTime,
   formatJstDate,
   snsOverview,
@@ -1769,7 +1771,7 @@ function renderMediaTable() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 12;
+    td.colSpan = 13;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -1808,6 +1810,13 @@ function renderMediaTable() {
     tr.appendChild(numCell(media.shares));
     tr.appendChild(numCell(media.saves));
     tr.appendChild(numCell(media.avg_watch_sec, formatSeconds));
+    // The watch rate is a percentage, and percentages are not
+    // privacy-masked, so this cell skips the amount-value class
+    // the count cells carry.
+    const rateTd = document.createElement("td");
+    rateTd.className = "num";
+    rateTd.textContent = formatWatchRate(media.watch_rate);
+    tr.appendChild(rateTd);
     const linkTd = document.createElement("td");
     if (media.permalink) {
       const link = document.createElement("a");
@@ -3003,7 +3012,7 @@ function renderSns(detail) {
   fillDemoRanking("sns-countries", topDemographics(demo.top_countries));
   renderFollowChart(detail);
   snsMediaRows = Array.isArray(detail?.instagram?.recent_media)
-    ? detail.instagram.recent_media
+    ? detail.instagram.recent_media.map(withWatchRate)
     : [];
   snsDetail = detail;
   const mediaRange = mediaDateRange(snsMediaRows);
