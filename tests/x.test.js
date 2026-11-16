@@ -7,6 +7,7 @@ import {
   xApiRunwayMonths,
   xApiCreditSummary,
   xApiDailyPace,
+  xDailyUsage,
   formatUsd,
   xPosts,
   xErrorNotes,
@@ -237,6 +238,41 @@ describe("X shaping", () => {
       runwayText: null,
       paceText: null,
     });
+  });
+
+  it("xDailyUsage derives daily spend from the balance and merges post counts", () => {
+    const rows = [
+      { collected_at: "2026-11-13T12:00:00.000Z", x_api_balance_usd: 41.66 },
+      { collected_at: "2026-11-14T12:00:00.000Z", x_api_balance_usd: 41.0 },
+      { collected_at: "2026-11-15T12:00:00.000Z", x_api_balance_usd: 40.13 },
+      // A top-up day: the balance rises, so the spend is zero,
+      // never negative.
+      { collected_at: "2026-11-16T12:00:00.000Z", x_api_balance_usd: 40.37 },
+    ];
+    const detail = {
+      x: {
+        api_daily_posts: [
+          { date: "2026-11-14", tweets_consumed: 12 },
+          { date: "2026-11-15", tweets_consumed: 12 },
+          { date: "2026-11-16", tweets_consumed: 8 },
+        ],
+      },
+    };
+    // The first balance day (11-13) has no previous day, so it
+    // carries no spend and does not appear on its own.
+    expect(xDailyUsage(rows, detail)).toEqual([
+      { date: "20261114", spendUsd: 0.66, tweetsConsumed: 12 },
+      { date: "20261115", spendUsd: 0.87, tweetsConsumed: 12 },
+      { date: "20261116", spendUsd: 0, tweetsConsumed: 8 },
+    ]);
+    expect(xDailyUsage([], {})).toEqual([]);
+    // Post days without any balance history still appear, with
+    // a null spend.
+    expect(xDailyUsage([], detail)).toEqual([
+      { date: "20261114", spendUsd: null, tweetsConsumed: 12 },
+      { date: "20261115", spendUsd: null, tweetsConsumed: 12 },
+      { date: "20261116", spendUsd: null, tweetsConsumed: 8 },
+    ]);
   });
 
   it("xErrorNotes shows each distinct note once", () => {

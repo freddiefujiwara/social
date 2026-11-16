@@ -322,3 +322,69 @@ export function buildFollowChartSvg(days, options = {}) {
     `<text class="chart-max-label" x="${pad}" y="${height - padBottom + 13}" font-size="11">最大解除 ${maxUnfollows}</text>`;
   return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${ariaLabel}">${parts.join("")}${axisLabels}${maxLabels}</svg>`;
 }
+
+// Single-series daily bar chart on a zero baseline: one bar per
+// day, its height the day's value against a nice-stepped y axis
+// (gridlines and tick labels, like the line chart's axis). A null
+// value draws no bar — a gap, not a zero — so a day the figure
+// could not be computed for stays visibly missing. The tick
+// labels carry .chart-y-label, so the privacy masking hides the
+// numbers while the bars' shape stays, the follow chart's
+// convention. Days are { date: "YYYYMMDD", value } in ascending
+// order; options.formatValue shapes the tick labels (counts by
+// default) and options.barClass names the bars' fill class.
+// Pure string building, like the other builders.
+export function buildBarChartSvg(days, options = {}) {
+  const width = options.width || 720;
+  const height = options.height || 220;
+  const pad = options.padding || 24;
+  const padBottom = pad + 22; // room for the date labels
+  const ariaLabel = options.label || "日ごとの値";
+  const formatValue =
+    typeof options.formatValue === "function"
+      ? options.formatValue
+      : formatAxisValue;
+  const barClass = options.barClass || "usage-bar";
+  if (!days || days.length === 0) {
+    return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${ariaLabel}"></svg>`;
+  }
+  const values = days
+    .map((day) => day.value)
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
+  const max = Math.max(...values, 0);
+  const scale = niceAxisScale(0, max) || { lo: 0, hi: 1, ticks: [0, 1] };
+  const padLeft = pad + 38;
+  const innerW = width - padLeft - pad;
+  const innerH = height - pad - padBottom;
+  const baseY = pad + innerH;
+  const slot = innerW / days.length;
+  const barW = Math.max(2, Math.min(18, slot * 0.6));
+  const round = (n) => Number(n.toFixed(1));
+  const yFor = (value) =>
+    round(pad + innerH - ((value - scale.lo) / (scale.hi - scale.lo)) * innerH);
+  const grid = scale.ticks
+    .map((tick) => {
+      const y = yFor(tick);
+      return `<line class="chart-gridline" x1="${padLeft}" y1="${y}" x2="${width - pad}" y2="${y}"/><text class="chart-y-label" x="${padLeft - 6}" y="${round(y + 3.5)}" text-anchor="end">${formatValue(tick)}</text>`;
+    })
+    .join("");
+  const bars = days
+    .map((day, i) => {
+      if (typeof day.value !== "number" || !(day.value > 0)) {
+        return "";
+      }
+      const cx = padLeft + slot * i + slot / 2;
+      const y = yFor(day.value);
+      return `<rect class="${barClass}" x="${round(cx - barW / 2)}" y="${y}" width="${round(barW)}" height="${round(baseY - y)}"/>`;
+    })
+    .join("");
+  const axisLabels = tickIndices(days.length)
+    .map((i) => {
+      const x = padLeft + slot * i + slot / 2;
+      const anchor =
+        i === 0 ? "start" : i === days.length - 1 ? "end" : "middle";
+      return `<text class="chart-axis-label" x="${round(x)}" y="${height - 6}" text-anchor="${anchor}">${formatDateLabel(days[i].date)}</text>`;
+    })
+    .join("");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${ariaLabel}">${grid}${bars}${axisLabels}</svg>`;
+}

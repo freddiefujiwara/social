@@ -41,6 +41,7 @@ import {
   xHistorySeries,
   xTotals,
   xApiCreditSummary,
+  xDailyUsage,
   xPosts,
   xErrorNotes,
   overviewKpis,
@@ -74,6 +75,7 @@ import {
 import {
   buildLineChartSvg,
   buildFollowChartSvg,
+  buildBarChartSvg,
   formatDateLabel,
   formatDateFull,
 } from "./chart.js";
@@ -2624,9 +2626,75 @@ function renderXApiCredit() {
   wrap.appendChild(box);
 }
 
+// Tick labels for the daily spend chart: dollars with the
+// trailing zeros trimmed ("$0", "$0.2", "$0.25").
+function formatUsdTick(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return "";
+  }
+  return `$${Number.isInteger(num) ? String(num) : String(Math.round(num * 100) / 100)}`;
+}
+
+// The daily usage charts under the credit card: the day's
+// credit spend (USD, derived from the balance's decrease) and
+// the day's post consumption, over the same days, so the effect
+// of a change in how the account is read shows up in both. The
+// figures are private like the balance itself — the charts'
+// tick labels hide under masking, the credit card's convention.
+function renderXDailyUsage() {
+  const wrap = document.getElementById("x-daily-usage");
+  if (!wrap) {
+    return;
+  }
+  if (fillHistoryPending(wrap)) {
+    return;
+  }
+  wrap.innerHTML = "";
+  const days = xDailyUsage(overviewState.historyRows, overviewState.detail);
+  if (!days.length) {
+    const p = document.createElement("p");
+    p.className = "meta";
+    p.textContent = "消費の履歴はまだありません（取得のたびに貯まっていきます）";
+    wrap.appendChild(p);
+    return;
+  }
+  const blocks = [
+    {
+      title: "消費額（USD）",
+      days: days.map((day) => ({ date: day.date, value: day.spendUsd })),
+      options: {
+        label: "X APIクレジット消費額（日ごと）",
+        formatValue: formatUsdTick,
+      },
+    },
+    {
+      title: "ポスト消費（件）",
+      days: days.map((day) => ({ date: day.date, value: day.tweetsConsumed })),
+      options: { label: "X APIポスト消費（日ごと）" },
+    },
+  ];
+  for (const block of blocks) {
+    const head = document.createElement("p");
+    head.className = "meta";
+    head.textContent = block.title;
+    const chart = document.createElement("div");
+    chart.className = "chart-wrap";
+    chart.innerHTML = buildBarChartSvg(block.days, block.options);
+    wrap.appendChild(head);
+    wrap.appendChild(chart);
+  }
+  const note = document.createElement("p");
+  note.className = "meta";
+  note.textContent =
+    "消費額は残高の減りから計算しています。2026年11月16日に投稿データの読み取り方法を変更したため、それ以降は本来の利用分だけが消費されます。";
+  wrap.appendChild(note);
+}
+
 function renderX() {
   fillTotalBoxes("sns-x-totals", xTotals(overviewState.detail, overviewState.historyRows));
   renderXApiCredit();
+  renderXDailyUsage();
   xPostRows = xPosts(overviewState.detail);
   wireSortableTable("x-posts-table", xSort, renderXPosts);
   // Until the snapshot settles, the genre section and the
