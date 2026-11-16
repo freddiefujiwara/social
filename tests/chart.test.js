@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLineChartSvg,
   buildFollowChartSvg,
+  buildBarChartSvg,
   formatAxisValue,
   formatDateLabel,
   formatDateFull,
@@ -344,5 +345,39 @@ describe("buildFollowChartSvg", () => {
     ]);
     expect(svg).not.toContain("<rect");
     expect(svg).toContain("最大フォロー 0");
+  });
+});
+
+describe("buildBarChartSvg", () => {
+  const count = (svg, needle) => svg.split(needle).length - 1;
+
+  it("renders an empty svg for no days", () => {
+    const svg = buildBarChartSvg([]);
+    expect(svg).toContain("<svg");
+    expect(svg).not.toContain("<rect");
+    expect(buildBarChartSvg(null)).toContain("<svg");
+  });
+
+  it("draws one bar per valued day and leaves null days as gaps", () => {
+    const svg = buildBarChartSvg(
+      [
+        { date: "20261114", value: 0.66 },
+        { date: "20261115", value: null },
+        { date: "20261116", value: 0.87 },
+      ],
+      { width: 200, height: 140, padding: 10 },
+    );
+    expect(count(svg, 'class="usage-bar"')).toBe(2);
+    expect(svg).toContain('class="chart-gridline"');
+    expect(svg).toContain('class="chart-y-label"');
+    expect(svg).toContain(">11/14<");
+    expect(svg).toContain(">11/16<");
+  });
+
+  it("formats the tick labels with the caller's formatter", () => {
+    const svg = buildBarChartSvg([{ date: "20261114", value: 1.5 }], {
+      formatValue: (v) => `$${v}`,
+    });
+    expect(svg).toContain(">$1.5<");
   });
 });

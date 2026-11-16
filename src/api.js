@@ -982,6 +982,49 @@ export function xApiCreditSummary(detail, historyRows) {
   };
 }
 
+// The X tab's daily usage series, oldest first, capped at the
+// most recent 30 days: [{ date: "YYYYMMDD", spendUsd,
+// tweetsConsumed }]. spendUsd is the day's credit consumption
+// derived from the balance's own daily points — the drop from
+// the previous day's last balance to this day's, with increases
+// (a top-up) counting as zero rather than negative consumption,
+// the runway estimate's convention. The first day that carries
+// a balance has no previous day, so its spendUsd stays null (a
+// gap on the chart, not a zero). tweetsConsumed is the usage
+// report's per-day post count from the detail's
+// api_daily_posts, null on days the report does not cover. A
+// day appears when either half knows it.
+export function xDailyUsage(historyRows, detail) {
+  const daily = dailyPointsForKey(historyRows, "x_api_balance_usd");
+  const spendByDate = new Map();
+  for (let i = 1; i < daily.length; i++) {
+    const drop = daily[i - 1].views - daily[i].views;
+    spendByDate.set(
+      daily[i].date,
+      Math.round(Math.max(0, drop) * 100) / 100,
+    );
+  }
+  const postsByDate = new Map();
+  const posts =
+    detail && detail.x && Array.isArray(detail.x.api_daily_posts)
+      ? detail.x.api_daily_posts
+      : [];
+  for (const entry of posts) {
+    if (!entry || typeof entry.date !== "string" || !isNum(entry.tweets_consumed)) {
+      continue;
+    }
+    postsByDate.set(entry.date.replace(/-/g, ""), entry.tweets_consumed);
+  }
+  const dates = [...new Set([...spendByDate.keys(), ...postsByDate.keys()])]
+    .sort()
+    .slice(-30);
+  return dates.map((date) => ({
+    date,
+    spendUsd: spendByDate.has(date) ? spendByDate.get(date) : null,
+    tweetsConsumed: postsByDate.has(date) ? postsByDate.get(date) : null,
+  }));
+}
+
 // The X account's recent posts, newest first as collected:
 // [{ id, posted_at, text, url, views, likes, reposts, replies }],
 // with nulls wherever a number could not be collected. Anything
