@@ -50,6 +50,40 @@ describe("boot display", () => {
     expect(bootBody).toContain("showLoading()");
   });
 
+  it("renders the Google button with the unified options", () => {
+    const call = mainJs.match(
+      /renderButton\(document\.getElementById\("signin"\), \{[^}]*\}\)/,
+    )?.[0];
+    expect(call).toContain('theme: "outline"');
+    expect(call).toContain('size: "large"');
+    expect(call).toContain('text: "signin_with"');
+    expect(call).toContain('shape: "pill"');
+  });
+
+  it("gives up waiting for the Google script and says so on the gate", () => {
+    expect(mainJs).toContain(
+      "Googleログインスクリプトの読み込みに失敗しました。広告ブロック等を解除して再読み込みしてください。",
+    );
+    expect(mainJs).toMatch(/signInScriptWaitMs >= 3000/);
+  });
+
+  it("announces an expired saved session on the boot path only", () => {
+    // The owner-session branch of boot lands on the gate with the
+    // expiry notice; the stale-share branch of enterWithShareToken
+    // also lands on the gate but must stay silent — the visitor
+    // did not just lose a session there.
+    const bootRegion = mainJs.slice(mainJs.indexOf("async function boot()"));
+    expect(bootRegion).toContain(
+      "gateErrorEl.textContent = SESSION_EXPIRED_TEXT;",
+    );
+    const shareRegion = mainJs.slice(
+      mainJs.indexOf("async function enterWithShareToken"),
+      mainJs.indexOf("function probeAnonymous"),
+    );
+    expect(shareRegion).toContain('gateErrorEl.textContent = "";');
+    expect(shareRegion).not.toContain("SESSION_EXPIRED_TEXT");
+  });
+
   it("orders the overview 主要KPI above チャネルの大きさ, with per-channel top lists", () => {
     const overviewAt = html.indexOf('id="tab-overview"');
     const kpiAt = html.indexOf("主要KPI", overviewAt);
