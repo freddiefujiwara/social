@@ -163,12 +163,21 @@ describe("dashboard auto-refresh (runtime)", () => {
     expect(watchHeader).toBeTruthy();
     expect(watchHeader.textContent).toContain("平均視聴率");
     const firstRowCells = mediaBody().querySelectorAll("tr:first-child td");
-    expect(firstRowCells).toHaveLength(13);
+    expect(firstRowCells).toHaveLength(14);
     const rateCell = [...firstRowCells].find(
       (td) => td.textContent === "40.0%",
     );
     expect(rateCell).toBeTruthy();
     expect(rateCell.className).not.toContain("amount-value");
+    // The genre column names the classifier's genre for the
+    // row (the default sort is views desc, so the first row
+    // is m2, whose curry caption classifies as グルメ) as a
+    // plain label cell that is not privacy-masked.
+    const genreCell = [...firstRowCells].find(
+      (td) => td.textContent === "グルメ",
+    );
+    expect(genreCell).toBeTruthy();
+    expect(genreCell.className).not.toContain("amount-value");
 
     // Open the Instagram tab and narrow the per-post table to
     // the 音楽 genre; both must survive the refresh.

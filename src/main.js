@@ -90,6 +90,7 @@ import {
   filterMediaByPeriod,
   filterMediaByGenre,
   mediaGenreOptions,
+  classifyCaption,
   articleGenreOptions,
   filterArticlesByGenre,
   mediaDateRange,
@@ -1773,7 +1774,7 @@ function renderMediaTable() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 13;
+    td.colSpan = 14;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -1801,6 +1802,14 @@ function renderMediaTable() {
     captionTd.className = "caption-cell";
     captionTd.textContent = captionHead(media.caption);
     tr.appendChild(captionTd);
+    // The genre the same classifier assigns for the genre
+    // rollup and the filter buttons above, shown per post so a
+    // row explains itself without switching the filter. A genre
+    // name is a label, not a number, so it is never masked.
+    const genreTd = document.createElement("td");
+    genreTd.className = "nowrap";
+    genreTd.textContent = classifyCaption(media.caption);
+    tr.appendChild(genreTd);
     const typeTd = document.createElement("td");
     typeTd.className = "nowrap";
     typeTd.textContent = mediaTypeLabel(media.type);
