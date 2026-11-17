@@ -3409,10 +3409,27 @@ async function onSignedIn(credential) {
   loadDashboard();
 }
 
+// The GIS client script arrives async; poll for it briefly. If
+// it never shows up — an ad blocker can swallow it — the gate
+// says so after a few seconds instead of leaving the sign-in
+// area silently empty forever.
+const SIGNIN_SCRIPT_ERROR_TEXT =
+  "Googleログインスクリプトの読み込みに失敗しました。広告ブロック等を解除して再読み込みしてください。";
+let signInScriptWaitMs = 0;
+
 function initGoogleSignIn() {
   if (!window.google || !window.google.accounts) {
+    if (signInScriptWaitMs >= 3000) {
+      gateErrorEl.textContent = SIGNIN_SCRIPT_ERROR_TEXT;
+      return;
+    }
+    signInScriptWaitMs += 300;
     setTimeout(initGoogleSignIn, 300);
     return;
+  }
+  signInScriptWaitMs = 0;
+  if (gateErrorEl.textContent === SIGNIN_SCRIPT_ERROR_TEXT) {
+    gateErrorEl.textContent = "";
   }
   window.google.accounts.id.initialize({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
@@ -3421,6 +3438,8 @@ function initGoogleSignIn() {
   window.google.accounts.id.renderButton(document.getElementById("signin"), {
     theme: "outline",
     size: "large",
+    text: "signin_with",
+    shape: "pill",
   });
 }
 
@@ -3497,6 +3516,11 @@ shareCopyBtn.addEventListener("click", async () => {
     document.execCommand("copy");
   }
 });
+
+// Shown on the gate when a saved owner session turned out to be
+// dead and the visitor is asked to sign in again.
+const SESSION_EXPIRED_TEXT =
+  "ログインの有効期限が切れました。再度ログインしてください。";
 
 // Entry point. A share link skips sign-in entirely; without one, a
 // session saved by an earlier visit is restored before falling back
@@ -3590,7 +3614,9 @@ async function boot() {
       await enterWithShareToken(savedShare, false);
       return;
     }
-    gateErrorEl.textContent = "";
+    // The visitor came back to a dead owner session: say why
+    // the gate is back instead of showing it without a word.
+    gateErrorEl.textContent = SESSION_EXPIRED_TEXT;
     showGate();
     initGoogleSignIn();
     return;
