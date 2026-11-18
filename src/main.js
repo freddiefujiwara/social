@@ -1116,10 +1116,10 @@ function renderBlogArticleTable() {
     tbody.appendChild(tr);
     return;
   }
-  // A numeric cell of the speed / depth / completion columns.
-  // Like the view count beside it, every figure here is a GA
-  // number no public page prints, so the cell masks the same
-  // way; a figure the collection does not have shows "—".
+  // A numeric cell of the speed / depth columns. Like the
+  // view count beside it, every figure here is a GA number no
+  // public page prints, so the cell masks the same way; a
+  // figure the collection does not have shows "—".
   const depthCell = (value, format) => {
     const td = document.createElement("td");
     td.className = "num amount-value";
@@ -1167,11 +1167,17 @@ function renderBlogArticleTable() {
     tr.appendChild(depthCell(article.scroll50, formatCount));
     tr.appendChild(depthCell(article.scroll75, formatCount));
     tr.appendChild(depthCell(article.scroll100, formatCount));
-    tr.appendChild(
-      depthCell(article.completion, (value) =>
-        value === null || value === undefined ? "—" : `${value.toFixed(1)}%`,
-      ),
-    );
+    // The completion rate is a percentage, and percentages
+    // are not privacy-masked (the same call as the Instagram
+    // watch rate), so this cell skips the amount-value class
+    // the count cells beside it carry.
+    const completionTd = document.createElement("td");
+    completionTd.className = "num";
+    completionTd.textContent =
+      article.completion === null || article.completion === undefined
+        ? "—"
+        : `${article.completion.toFixed(1)}%`;
+    tr.appendChild(completionTd);
     tbody.appendChild(tr);
   }
   updateSortHeaders("blog-article-table", blogArticleSort);
@@ -2051,6 +2057,15 @@ function renderYoutube(detail) {
 function renderYoutubeVideos() {
   const tbody = document.getElementById("sns-youtube-body");
   tbody.innerHTML = "";
+  const youtubeRangeEl = document.getElementById("youtube-videos-range");
+  youtubeRangeEl.textContent = "";
+  if (youtubeVideoRows.length) {
+    youtubeRangeEl.append(
+      "対象：全ての動画（全",
+      countSpan(youtubeVideoRows.length),
+      "件）",
+    );
+  }
   const videos = sortMedia(
     youtubeVideoRows,
     youtubeSort.key,
@@ -2746,8 +2761,8 @@ function renderXPosts() {
       tr.appendChild(textTd);
       tr.appendChild(numCell(post.views));
       tr.appendChild(numCell(post.likes));
-      tr.appendChild(numCell(post.reposts));
       tr.appendChild(numCell(post.replies));
+      tr.appendChild(numCell(post.reposts));
       // The reaction detail toggle: only posts the notify
       // collection has facts for get one; the rest show the
       // dash, so the column never promises detail that is not

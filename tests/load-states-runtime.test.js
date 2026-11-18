@@ -218,14 +218,17 @@ describe("dashboard load states (runtime)", () => {
       "15",
       "12.2%",
     ]);
-    // The speed, depth and completion cells mask like the view
-    // count; the publication day does not.
-    for (const index of [3, 4, 5, 6, 7, 8, 9, 10]) {
+    // The speed and depth cells mask like the view count; the
+    // publication day does not, and neither does the completion
+    // rate — a percentage, unmasked like the Instagram watch
+    // rate.
+    for (const index of [3, 4, 5, 6, 7, 8, 9]) {
       expect(articleCells[index].classList.contains("amount-value")).toBe(
         true,
       );
     }
     expect(articleCells[0].classList.contains("amount-value")).toBe(false);
+    expect(articleCells[10].classList.contains("amount-value")).toBe(false);
     // The removed sections stay removed: no page-ranking list
     // and no display-time ranking in the blog tab.
     expect(document.getElementById("top-pages")).toBeNull();
