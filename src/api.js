@@ -268,6 +268,30 @@ export function formatSeconds(value) {
   return `${Math.round(value * 10) / 10}秒`;
 }
 
+// A video length as m:ss (h:mm:ss from an hour up), the way
+// YouTube itself prints durations. A missing or non-positive
+// value shows the dash.
+export function formatClockDuration(value) {
+  if (!isNum(value) || value <= 0) {
+    return "—";
+  }
+  const total = Math.round(value);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`
+    : `${minutes}:${seconds}`;
+}
+
+// Whether a video counts as a Short, judged by its length
+// alone: at most a minute. Orientation is not collected, so
+// the length is the only signal a row has.
+export function isShortVideo(video) {
+  const duration = video?.duration_sec;
+  return isNum(duration) && duration > 0 && duration <= 60;
+}
+
 // The average watch rate of one media row, as a percent: the
 // average watch time (avg_watch_sec) over the video's length
 // (duration_sec, collected alongside the other per-media figures)

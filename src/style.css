@@ -804,6 +804,19 @@ textarea:disabled {
    reads as a link, and the expanded facts sit compactly under
    the post row — name lists on one line each, reply / quote
    bodies in full with their line breaks kept. */
+/* The Shorts marker beside a short video's title in the
+   YouTube table: a quiet label, not a figure, so it is never
+   privacy-masked. */
+.shorts-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .reaction-toggle {
   background: none;
   border: none;

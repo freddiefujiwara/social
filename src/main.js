@@ -54,6 +54,8 @@ import {
   articleViewStats,
   formatCount,
   formatSeconds,
+  formatClockDuration,
+  isShortVideo,
   formatWatchRate,
   withWatchRate,
   formatJstDateTime,
@@ -2079,7 +2081,7 @@ function renderYoutubeVideos() {
     }
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = 7;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -2106,11 +2108,21 @@ function renderYoutubeVideos() {
     } else {
       titleTd.textContent = video.title || "—";
     }
+    if (isShortVideo(video)) {
+      const badge = document.createElement("span");
+      badge.className = "shorts-badge";
+      badge.textContent = "Shorts";
+      titleTd.appendChild(badge);
+    }
     tr.appendChild(titleTd);
     const dateTd = document.createElement("td");
     dateTd.className = "nowrap";
-    dateTd.textContent = formatJstDate(video.published_at);
+    dateTd.textContent = formatJstDateTime(video.published_at);
     tr.appendChild(dateTd);
+    const durationTd = document.createElement("td");
+    durationTd.className = "num amount-value";
+    durationTd.textContent = formatClockDuration(video.duration_sec);
+    tr.appendChild(durationTd);
     for (const value of [video.views, video.likes, video.comments]) {
       const td = document.createElement("td");
       td.className = "num amount-value";
