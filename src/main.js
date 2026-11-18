@@ -43,6 +43,9 @@ import {
   xApiCreditSummary,
   xDailyUsage,
   xPosts,
+  xReactions,
+  xRecentFollows,
+  xReactionGroups,
   xErrorNotes,
   overviewKpis,
   topPostsByChannel,
@@ -2474,6 +2477,10 @@ let xSort = { key: "views", dir: "desc", wired: false };
 // (classifyCaption over the post text), so the buttons, the
 // genre section above and the filter always agree.
 let xGenreFilter = null;
+// The posts whose reaction detail is expanded under the
+// per-post table. Kept across re-renders (genre filter, sort,
+// the ten-minute auto-refresh) like the other view state.
+const xExpandedPostIds = new Set();
 // The genre table's sort, mirroring the other genre tables.
 let xGenreSort = { key: "totalViews", dir: "desc" };
 
@@ -2506,6 +2513,128 @@ function renderXPostsGenreTabs() {
   });
 }
 
+// One reaction actor as display text: the name with the
+// handle in parentheses, falling back to whichever half the
+// stored fact carries.
+function xActorText(fact) {
+  const name = (fact && fact.actor_name) || "";
+  const username = (fact && fact.actor_username) || "";
+  if (name && username) {
+    return `${name}（@${username}）`;
+  }
+  if (username) {
+    return `@${username}`;
+  }
+  return name || "（名前なし）";
+}
+
+// The expanded reaction detail under one post row: who liked
+// and reposted it (name lists linked to their profiles), and
+// the replies and quotes with their bodies (linked to the
+// reaction post itself). The closing note states the data's
+// limits where the reader meets them: the facts come from the
+// notify window the hourly collection reads, so they cover
+// only what arrived after the collection started, and an
+// aggregated like notification does not name everyone.
+function buildXReactionDetail(facts) {
+  const groups = xReactionGroups(facts);
+  const wrap = document.createElement("div");
+  wrap.className = "reaction-detail";
+  const nameList = (label, list) => {
+    if (!list.length) {
+      return;
+    }
+    const p = document.createElement("p");
+    p.append(`${label}：`);
+    list.forEach((fact, index) => {
+      if (index) {
+        p.append("、");
+      }
+      const username = fact.actor_username || "";
+      if (username) {
+        const link = document.createElement("a");
+        link.href = `https://x.com/${username}`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = xActorText(fact);
+        p.appendChild(link);
+      } else {
+        p.append(xActorText(fact));
+      }
+    });
+    wrap.appendChild(p);
+  };
+  nameList("いいね", groups.like);
+  nameList("リポスト", groups.retweet);
+  const bodyList = (label, list) => {
+    if (!list.length) {
+      return;
+    }
+    const head = document.createElement("p");
+    head.textContent = `${label}：`;
+    wrap.appendChild(head);
+    for (const fact of list) {
+      const item = document.createElement("div");
+      item.className = "reaction-item";
+      const meta = document.createElement("p");
+      meta.className = "meta";
+      const when = fact.acted_at || fact.collected_at;
+      const actorLabel = when
+        ? `${xActorText(fact)}（${formatJstDateTime(when)}）`
+        : xActorText(fact);
+      if (fact.reaction_tweet_id) {
+        const link = document.createElement("a");
+        link.href = `https://x.com/i/web/status/${fact.reaction_tweet_id}`;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = actorLabel;
+        meta.appendChild(link);
+      } else {
+        meta.textContent = actorLabel;
+      }
+      const body = document.createElement("p");
+      body.className = "reaction-body";
+      body.textContent = fact.text || "";
+      item.append(meta, body);
+      wrap.appendChild(item);
+    }
+  };
+  bodyList("返信", groups.reply);
+  bodyList("引用", groups.quote);
+  const note = document.createElement("p");
+  note.className = "meta";
+  note.textContent =
+    "通知から取り込めた反応だけを表示しています（取り込み開始以降に届いた分）。いいねは集約された通知で届くため、全員分が載らないことがあります。";
+  wrap.appendChild(note);
+  return wrap;
+}
+
+// The newest follows the notify collection stored, as one
+// compact line above the per-post table: a follow is an
+// account-level fact, so it belongs to no post's detail.
+// Nothing renders while none are stored.
+function renderXRecentFollows() {
+  const wrap = document.getElementById("x-recent-follows");
+  if (!wrap) {
+    return;
+  }
+  wrap.innerHTML = "";
+  const follows = xRecentFollows(overviewState.detail);
+  if (!follows.length) {
+    return;
+  }
+  const p = document.createElement("p");
+  p.className = "meta";
+  p.append("最近のフォロー：");
+  follows.forEach((fact, index) => {
+    if (index) {
+      p.append("、");
+    }
+    p.append(xActorText(fact));
+  });
+  wrap.appendChild(p);
+}
+
 function renderXPosts() {
   const tbody = document.getElementById("x-posts-body");
   tbody.innerHTML = "";
@@ -2526,7 +2655,7 @@ function renderXPosts() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 6;
+    td.colSpan = 7;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -2537,6 +2666,7 @@ function renderXPosts() {
       td.textContent = formatCount(value);
       return td;
     };
+    const reactionsByPost = xReactions(overviewState.detail);
     for (const post of rows) {
       const tr = document.createElement("tr");
       const dateTd = document.createElement("td");
@@ -2561,7 +2691,43 @@ function renderXPosts() {
       tr.appendChild(numCell(post.likes));
       tr.appendChild(numCell(post.reposts));
       tr.appendChild(numCell(post.replies));
+      // The reaction detail toggle: only posts the notify
+      // collection has facts for get one; the rest show the
+      // dash, so the column never promises detail that is not
+      // there.
+      const facts = reactionsByPost[post.id] || [];
+      const detailTd = document.createElement("td");
+      if (facts.length) {
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "reaction-toggle";
+        toggle.textContent = `詳細（${facts.length}件）`;
+        toggle.setAttribute(
+          "aria-expanded",
+          xExpandedPostIds.has(post.id) ? "true" : "false",
+        );
+        toggle.addEventListener("click", () => {
+          if (xExpandedPostIds.has(post.id)) {
+            xExpandedPostIds.delete(post.id);
+          } else {
+            xExpandedPostIds.add(post.id);
+          }
+          renderXPosts();
+        });
+        detailTd.appendChild(toggle);
+      } else {
+        detailTd.textContent = "—";
+      }
+      tr.appendChild(detailTd);
       tbody.appendChild(tr);
+      if (facts.length && xExpandedPostIds.has(post.id)) {
+        const detailTr = document.createElement("tr");
+        const detailCell = document.createElement("td");
+        detailCell.colSpan = 7;
+        detailCell.appendChild(buildXReactionDetail(facts));
+        detailTr.appendChild(detailCell);
+        tbody.appendChild(detailTr);
+      }
     }
   }
   updateSortHeaders("x-posts-table", xSort);
@@ -2705,6 +2871,7 @@ function renderX() {
   renderXApiCredit();
   renderXDailyUsage();
   xPostRows = xPosts(overviewState.detail);
+  renderXRecentFollows();
   wireSortableTable("x-posts-table", xSort, renderXPosts);
   // Until the snapshot settles, the genre section and the
   // per-post table carry the load state instead of their empty

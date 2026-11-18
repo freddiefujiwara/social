@@ -800,6 +800,38 @@ textarea:disabled {
   word-break: break-word;
 }
 
+/* X per-post reaction detail: the toggle in the last column
+   reads as a link, and the expanded facts sit compactly under
+   the post row — name lists on one line each, reply / quote
+   bodies in full with their line breaks kept. */
+.reaction-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--link);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.reaction-toggle:hover {
+  text-decoration: underline;
+}
+
+.reaction-detail p {
+  margin: 4px 0;
+}
+
+.reaction-detail .reaction-item {
+  margin: 6px 0;
+}
+
+.reaction-detail .reaction-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .data-table th.sortable {
   cursor: pointer;
   user-select: none;
