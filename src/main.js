@@ -45,6 +45,7 @@ import {
   xPosts,
   xReactions,
   xRecentFollows,
+  xUnattributedReactions,
   xReactionGroups,
   xErrorNotes,
   overviewKpis,
@@ -2635,6 +2636,62 @@ function renderXRecentFollows() {
   wrap.appendChild(p);
 }
 
+// Replies and quotes the notify collection stored but no
+// notify data can attribute to a post: the feed names the
+// reaction itself, never the post it answers. They render as
+// their own reading list under the per-post table — kind,
+// actor, moment and body, linked to the reaction post —
+// instead of being dropped or guessed onto a post. Nothing
+// renders while none are stored.
+function renderXUnattributed() {
+  const wrap = document.getElementById("x-unattributed");
+  if (!wrap) {
+    return;
+  }
+  wrap.innerHTML = "";
+  wrap.className = "";
+  const list = xUnattributedReactions(overviewState.detail);
+  if (!list.length) {
+    return;
+  }
+  wrap.className = "reaction-detail";
+  const title = document.createElement("h3");
+  title.className = "subsection-title";
+  title.textContent = "返信・引用（対象の投稿を特定できないもの）";
+  wrap.appendChild(title);
+  const note = document.createElement("p");
+  note.className = "meta";
+  note.textContent =
+    "返信・引用は、通知のデータに対象の投稿が含まれないため、投稿ごとの詳細には付けられませんでした。";
+  wrap.appendChild(note);
+  for (const fact of list) {
+    const item = document.createElement("div");
+    item.className = "reaction-item";
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    const kindLabel = fact.kind === "quote" ? "引用" : "返信";
+    const when = fact.acted_at || fact.collected_at;
+    const label = when
+      ? `${kindLabel}：${xActorText(fact)}（${formatJstDateTime(when)}）`
+      : `${kindLabel}：${xActorText(fact)}`;
+    if (fact.reaction_tweet_id) {
+      const link = document.createElement("a");
+      link.href = `https://x.com/i/web/status/${fact.reaction_tweet_id}`;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = label;
+      meta.appendChild(link);
+    } else {
+      meta.textContent = label;
+    }
+    const body = document.createElement("p");
+    body.className = "reaction-body";
+    body.textContent = fact.text || "";
+    item.append(meta, body);
+    wrap.appendChild(item);
+  }
+}
+
 function renderXPosts() {
   const tbody = document.getElementById("x-posts-body");
   tbody.innerHTML = "";
@@ -2872,6 +2929,7 @@ function renderX() {
   renderXDailyUsage();
   xPostRows = xPosts(overviewState.detail);
   renderXRecentFollows();
+  renderXUnattributed();
   wireSortableTable("x-posts-table", xSort, renderXPosts);
   // Until the snapshot settles, the genre section and the
   // per-post table carry the load state instead of their empty

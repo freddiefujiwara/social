@@ -6,10 +6,11 @@ import { fileURLToPath } from "node:url";
 // Runtime coverage for the X tab's per-post reaction detail:
 // boots main.js in jsdom with a stubbed fetch, then checks
 // that a post with stored reaction facts gets a 詳細 toggle
-// whose expansion names the likers and shows the reply body
-// with the data's limits stated, a post without facts shows
-// the dash instead, and the stored follows render as their
-// own line above the table.
+// whose expansion names the likers with the data's limits
+// stated, a post without facts shows the dash instead, the
+// stored follows render as their own line above the table,
+// and a reply no notify data can attribute renders in its
+// own section under the table.
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
@@ -56,15 +57,6 @@ const detailPayload = () =>
       reactions: {
         3001: [
           {
-            kind: "reply",
-            actor_name: "Carol",
-            actor_username: "carol",
-            text: "返信の本文です",
-            reaction_tweet_id: "4001",
-            acted_at: "2026-11-18T12:00:00.000Z",
-            collected_at: "2026-11-19T01:00:00.000Z",
-          },
-          {
             kind: "like",
             actor_name: "Alice",
             actor_username: "alice",
@@ -84,6 +76,17 @@ const detailPayload = () =>
           },
         ],
       },
+      unattributed_reactions: [
+        {
+          kind: "reply",
+          actor_name: "Carol",
+          actor_username: "carol",
+          text: "返信の本文です",
+          reaction_tweet_id: "4001",
+          acted_at: "2026-10-17T04:35:06.000Z",
+          collected_at: "2026-11-19T01:00:00.000Z",
+        },
+      ],
       recent_follows: [
         {
           actor_name: "Erin",
@@ -166,31 +169,40 @@ describe("x reaction detail (runtime)", () => {
     expect(firstCells).toHaveLength(7);
     const toggle = rows()[0].querySelector(".reaction-toggle");
     expect(toggle).toBeTruthy();
-    expect(toggle.textContent).toBe("詳細（3件）");
+    expect(toggle.textContent).toBe("詳細（2件）");
     const secondCells = rows()[1].querySelectorAll("td");
     expect(secondCells[6].textContent).toBe("—");
     expect(body().textContent).not.toContain("返信の本文です");
 
-    // Expanding names the likers, shows the reply with its
-    // body, and states the data's limits alongside.
+    // Expanding names the likers and states the data's limits
+    // alongside. The reply is not part of any post's detail:
+    // no notify data can attribute it to a post.
     toggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     expect(rows()).toHaveLength(3);
     const detailText = rows()[1].textContent;
     expect(detailText).toContain("Alice（@alice）");
     expect(detailText).toContain("Bob（@bob）");
-    expect(detailText).toContain("返信の本文です");
-    expect(detailText).toContain("Carol（@carol）");
+    expect(detailText).not.toContain("返信の本文です");
     expect(detailText).toContain("全員分が載らないことがあります");
-    const replyLink = rows()[1].querySelector(
-      'a[href="https://x.com/i/web/status/4001"]',
-    );
-    expect(replyLink).toBeTruthy();
 
     // Collapsing removes the expansion again.
     rows()[0]
       .querySelector(".reaction-toggle")
       .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     expect(rows()).toHaveLength(2);
-    expect(body().textContent).not.toContain("返信の本文です");
+
+    // The unattributed reply renders in its own section under
+    // the table, with the reason it cannot hang on a post.
+    const unattributed = document.getElementById("x-unattributed");
+    expect(unattributed.textContent).toContain(
+      "返信・引用（対象の投稿を特定できないもの）",
+    );
+    expect(unattributed.textContent).toContain("対象の投稿が含まれないため");
+    expect(unattributed.textContent).toContain("返信の本文です");
+    expect(unattributed.textContent).toContain("Carol（@carol）");
+    const replyLink = unattributed.querySelector(
+      'a[href="https://x.com/i/web/status/4001"]',
+    );
+    expect(replyLink).toBeTruthy();
   });
 });
