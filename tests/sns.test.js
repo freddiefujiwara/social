@@ -17,6 +17,8 @@ import {
   formatCount,
   formatPercent,
   formatSeconds,
+  formatClockDuration,
+  isShortVideo,
   formatJstDateTime,
   formatJstDate,
   snsTotalFollowers,
@@ -750,6 +752,21 @@ describe("formatting", () => {
   it("formatPercent keeps one decimal and dashes nulls", () => {
     expect(formatPercent(94.5)).toBe("94.5%");
     expect(formatPercent(null)).toBe("—");
+  });
+
+  it("formatClockDuration prints m:ss and h:mm:ss", () => {
+    expect(formatClockDuration(205)).toBe("3:25");
+    expect(formatClockDuration(45)).toBe("0:45");
+    expect(formatClockDuration(3661)).toBe("1:01:01");
+    expect(formatClockDuration(null)).toBe("—");
+    expect(formatClockDuration(0)).toBe("—");
+  });
+
+  it("isShortVideo judges by the length alone", () => {
+    expect(isShortVideo({ duration_sec: 60 })).toBe(true);
+    expect(isShortVideo({ duration_sec: 61 })).toBe(false);
+    expect(isShortVideo({ duration_sec: null })).toBe(false);
+    expect(isShortVideo({})).toBe(false);
   });
 
   it("formatSeconds rounds to one decimal", () => {
