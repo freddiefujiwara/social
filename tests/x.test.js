@@ -12,6 +12,7 @@ import {
   xPosts,
   xReactions,
   xRecentFollows,
+  xUnattributedReactions,
   xReactionGroups,
   xErrorNotes,
 } from "../src/api.js";
@@ -164,6 +165,18 @@ describe("X shaping", () => {
     expect(xRecentFollows({})).toEqual([]);
     expect(xRecentFollows(null)).toEqual([]);
     expect(xRecentFollows({ x: { recent_follows: null } })).toEqual([]);
+  });
+
+  it("xUnattributedReactions returns the stored list and tolerates anything else", () => {
+    const list = [{ kind: "reply", actor_username: "carol", text: "返信" }];
+    expect(xUnattributedReactions({ x: { unattributed_reactions: list } })).toBe(
+      list,
+    );
+    expect(xUnattributedReactions({})).toEqual([]);
+    expect(xUnattributedReactions(null)).toEqual([]);
+    expect(xUnattributedReactions({ x: { unattributed_reactions: null } })).toEqual(
+      [],
+    );
   });
 
   it("xReactionGroups splits the facts by kind and drops the rest", () => {

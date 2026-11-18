@@ -1055,6 +1055,16 @@ export function xRecentFollows(detail) {
   return Array.isArray(list) ? list : [];
 }
 
+// The stored replies and quotes no notify data can attribute
+// to a post (the feed names the reaction itself, never the
+// post it answers): [{ kind, actor_name, actor_username,
+// text, reaction_tweet_id, acted_at, collected_at }], newest
+// first. Anything that is not a list yields an empty one.
+export function xUnattributedReactions(detail) {
+  const list = detail?.x?.unattributed_reactions;
+  return Array.isArray(list) ? list : [];
+}
+
 // One post's reaction facts grouped for the detail view:
 // replies and quotes carry a body, likes and reposts are name
 // lists; every group keeps the stored (newest-first) order.
