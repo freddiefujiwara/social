@@ -10,6 +10,9 @@ import {
   xDailyUsage,
   formatUsd,
   xPosts,
+  xReactions,
+  xRecentFollows,
+  xReactionGroups,
   xErrorNotes,
 } from "../src/api.js";
 
@@ -144,6 +147,59 @@ describe("X shaping", () => {
     expect(xPosts({})).toEqual([]);
     expect(xPosts(null)).toEqual([]);
     expect(xPosts({ x: { recent_posts: null } })).toEqual([]);
+  });
+
+  it("xReactions returns the stored map and tolerates anything else", () => {
+    const reactions = { 2001: [{ kind: "like", actor_username: "alice" }] };
+    expect(xReactions({ x: { reactions } })).toBe(reactions);
+    expect(xReactions({})).toEqual({});
+    expect(xReactions(null)).toEqual({});
+    expect(xReactions({ x: { reactions: null } })).toEqual({});
+    expect(xReactions({ x: { reactions: [] } })).toEqual({});
+  });
+
+  it("xRecentFollows returns the stored list and tolerates anything else", () => {
+    const follows = [{ actor_name: "Erin", actor_username: "erin" }];
+    expect(xRecentFollows({ x: { recent_follows: follows } })).toBe(follows);
+    expect(xRecentFollows({})).toEqual([]);
+    expect(xRecentFollows(null)).toEqual([]);
+    expect(xRecentFollows({ x: { recent_follows: null } })).toEqual([]);
+  });
+
+  it("xReactionGroups splits the facts by kind and drops the rest", () => {
+    const facts = [
+      { kind: "reply", actor_username: "carol", text: "返信" },
+      { kind: "like", actor_username: "alice" },
+      { kind: "like", actor_username: "bob" },
+      { kind: "retweet", actor_username: "dave" },
+      { kind: "quote", actor_username: "erin", text: "引用" },
+      { kind: "follow", actor_username: "frank" },
+      { kind: "unknown", actor_username: "mallory" },
+      null,
+      "like",
+    ];
+    const groups = xReactionGroups(facts);
+    expect(groups.like.map((fact) => fact.actor_username)).toEqual([
+      "alice",
+      "bob",
+    ]);
+    expect(groups.retweet.map((fact) => fact.actor_username)).toEqual([
+      "dave",
+    ]);
+    expect(groups.reply.map((fact) => fact.actor_username)).toEqual(["carol"]);
+    expect(groups.quote.map((fact) => fact.actor_username)).toEqual(["erin"]);
+    expect(xReactionGroups(null)).toEqual({
+      like: [],
+      retweet: [],
+      reply: [],
+      quote: [],
+    });
+    expect(xReactionGroups(undefined)).toEqual({
+      like: [],
+      retweet: [],
+      reply: [],
+      quote: [],
+    });
   });
 
   it("formatUsd renders a balance and dashes anything else", () => {

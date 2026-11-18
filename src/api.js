@@ -1034,6 +1034,46 @@ export function xPosts(detail) {
   return Array.isArray(list) ? list : [];
 }
 
+// The reaction facts social-gas stored from the notify file,
+// grouped by the post they reacted to:
+// { [postId]: [{ kind, actor_name, actor_username, text,
+// reaction_tweet_id, acted_at, collected_at }] }, each list
+// newest first. The facts only cover reactions the hourly
+// collection picked up since the feature started, and likers
+// can be a subset (aggregated notifications name only some).
+// Anything that is not a plain object yields an empty map.
+export function xReactions(detail) {
+  const map = detail?.x?.reactions;
+  return map && typeof map === "object" && !Array.isArray(map) ? map : {};
+}
+
+// The newest stored follows (account-level reaction facts):
+// [{ actor_name, actor_username, collected_at }], newest
+// first. Anything that is not a list yields an empty one.
+export function xRecentFollows(detail) {
+  const list = detail?.x?.recent_follows;
+  return Array.isArray(list) ? list : [];
+}
+
+// One post's reaction facts grouped for the detail view:
+// replies and quotes carry a body, likes and reposts are name
+// lists; every group keeps the stored (newest-first) order.
+// Kinds the screen does not show are dropped, as are entries
+// that are not objects.
+export function xReactionGroups(facts) {
+  const groups = { like: [], retweet: [], reply: [], quote: [] };
+  for (const fact of Array.isArray(facts) ? facts : []) {
+    if (
+      fact &&
+      typeof fact === "object" &&
+      Object.prototype.hasOwnProperty.call(groups, fact.kind)
+    ) {
+      groups[fact.kind].push(fact);
+    }
+  }
+  return groups;
+}
+
 // Partial-collection notes social-gas attaches to the X section.
 // The tweet-gas call often reports the same summary on both
 // fields (the two halves travel in one call), so duplicates are
