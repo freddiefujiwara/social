@@ -166,12 +166,12 @@ describe("x reaction detail (runtime)", () => {
     // first and carries the toggle; the other shows the dash.
     expect(rows()).toHaveLength(2);
     const firstCells = rows()[0].querySelectorAll("td");
-    expect(firstCells).toHaveLength(7);
+    expect(firstCells).toHaveLength(8);
     const toggle = rows()[0].querySelector(".reaction-toggle");
     expect(toggle).toBeTruthy();
     expect(toggle.textContent).toBe("詳細（2件）");
     const secondCells = rows()[1].querySelectorAll("td");
-    expect(secondCells[6].textContent).toBe("—");
+    expect(secondCells[7].textContent).toBe("—");
     expect(body().textContent).not.toContain("返信の本文です");
 
     // Expanding names the likers and states the data's limits

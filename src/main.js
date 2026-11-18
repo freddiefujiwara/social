@@ -91,6 +91,7 @@ import {
   genreStatsForX,
   xGenreOptions,
   filterXByGenre,
+  classifyXText,
   filterMediaByPeriod,
   filterMediaByGenre,
   mediaGenreOptions,
@@ -1784,7 +1785,7 @@ function renderMediaTable() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 14;
+    td.colSpan = 13;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -1810,7 +1811,20 @@ function renderMediaTable() {
     tr.appendChild(dateTd);
     const captionTd = document.createElement("td");
     captionTd.className = "caption-cell";
-    captionTd.textContent = captionHead(media.caption);
+    // The caption itself is the link to the post, the same
+    // shape as the Threads and X tables (whose body text links
+    // out); without a permalink it stays plain text.
+    const head = captionHead(media.caption);
+    if (media.permalink) {
+      const link = document.createElement("a");
+      link.href = media.permalink;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = head;
+      captionTd.appendChild(link);
+    } else {
+      captionTd.textContent = head;
+    }
     tr.appendChild(captionTd);
     // The genre the same classifier assigns for the genre
     // rollup and the filter buttons above, shown per post so a
@@ -1838,21 +1852,6 @@ function renderMediaTable() {
     rateTd.className = "num";
     rateTd.textContent = formatWatchRate(media.watch_rate);
     tr.appendChild(rateTd);
-    const linkTd = document.createElement("td");
-    if (media.permalink) {
-      const link = document.createElement("a");
-      link.href = media.permalink;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.className = "post-link-icon";
-      link.textContent = "↗";
-      link.title = "Instagramで開く";
-      link.setAttribute("aria-label", "Instagramで開く");
-      linkTd.appendChild(link);
-    } else {
-      linkTd.textContent = "—";
-    }
-    tr.appendChild(linkTd);
     tbody.appendChild(tr);
   }
   updateSortHeaders("sns-media-table", snsSort);
@@ -2371,7 +2370,7 @@ function renderThreadsPosts() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -2402,6 +2401,13 @@ function renderThreadsPosts() {
         textTd.textContent = head;
       }
       tr.appendChild(textTd);
+      // The genre the shared classifier assigns, shown per
+      // post like the Instagram table's genre column; the
+      // filter above and the rollup use the same judgement.
+      const genreTd = document.createElement("td");
+      genreTd.className = "nowrap";
+      genreTd.textContent = classifyCaption(post.text);
+      tr.appendChild(genreTd);
       tr.appendChild(numCell(post.views));
       tr.appendChild(numCell(post.likes));
       tr.appendChild(numCell(post.replies));
@@ -2727,7 +2733,7 @@ function renderXPosts() {
   if (!rows.length) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.textContent = "データがありません";
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -2759,6 +2765,13 @@ function renderXPosts() {
         textTd.textContent = head;
       }
       tr.appendChild(textTd);
+      // The genre X's own classifier assigns, shown per post
+      // like the Instagram table's genre column; the filter
+      // above and the rollup use the same judgement.
+      const genreTd = document.createElement("td");
+      genreTd.className = "nowrap";
+      genreTd.textContent = classifyXText(post.text);
+      tr.appendChild(genreTd);
       tr.appendChild(numCell(post.views));
       tr.appendChild(numCell(post.likes));
       tr.appendChild(numCell(post.replies));
@@ -2795,7 +2808,7 @@ function renderXPosts() {
       if (facts.length && xExpandedPostIds.has(post.id)) {
         const detailTr = document.createElement("tr");
         const detailCell = document.createElement("td");
-        detailCell.colSpan = 7;
+        detailCell.colSpan = 8;
         detailCell.appendChild(buildXReactionDetail(facts));
         detailTr.appendChild(detailCell);
         tbody.appendChild(detailTr);

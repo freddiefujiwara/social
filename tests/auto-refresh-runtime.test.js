@@ -163,7 +163,7 @@ describe("dashboard auto-refresh (runtime)", () => {
     expect(watchHeader).toBeTruthy();
     expect(watchHeader.textContent).toContain("平均視聴率");
     const firstRowCells = mediaBody().querySelectorAll("tr:first-child td");
-    expect(firstRowCells).toHaveLength(14);
+    expect(firstRowCells).toHaveLength(13);
     const rateCell = [...firstRowCells].find(
       (td) => td.textContent === "40.0%",
     );
