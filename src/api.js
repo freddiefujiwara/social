@@ -966,7 +966,11 @@ export function xApiRunwayMonths(historyRows) {
   if (!Number.isFinite(months) || months <= 0) {
     return null;
   }
-  return Math.round(months * 10) / 10;
+  // An estimate that rounds to zero months is no estimate —
+  // the card would print "あと約0か月分" — so it stays null
+  // like the other cases with nothing honest to project.
+  const rounded = Math.round(months * 10) / 10;
+  return rounded > 0 ? rounded : null;
 }
 
 // The runway line of the credit card: absent while no estimate
@@ -1581,7 +1585,13 @@ export function rowsOf(response) {
   if (!response || !response.ok || !response.data) {
     return [];
   }
-  return response.data.rows || [];
+  // Only genuine row objects pass: a deformed payload (rows of
+  // the wrong type, stray nulls inside it) must not reach the
+  // shapers below, which index into each row's value arrays.
+  const rows = response.data.rows;
+  return Array.isArray(rows)
+    ? rows.filter((row) => row && typeof row === "object")
+    : [];
 }
 
 export function totalsOf(response) {
@@ -1589,27 +1599,39 @@ export function totalsOf(response) {
   if (!row) {
     return { views: 0, users: 0, sessions: 0 };
   }
-  const values = row.metricValues.map((m) => Number(m.value) || 0);
+  const metricValues = Array.isArray(row.metricValues) ? row.metricValues : [];
+  const values = metricValues.map((m) => Number(m?.value) || 0);
   return { views: values[0] || 0, users: values[1] || 0, sessions: values[2] || 0 };
 }
+
+// The first dimension value of a report row (a date, a page
+// path, a channel name), or null when the row does not carry
+// one in the shape GA sends — such rows cannot be shaped and
+// the rankings / series below drop them.
+const dimensionValueOf = (row) => {
+  const value = row.dimensionValues?.[0]?.value;
+  return typeof value === "string" ? value : null;
+};
 
 // Daily rows come back as YYYYMMDD dimension values; sort ascending
 // and shape them for the chart.
 export function dailySeries(response) {
   return rowsOf(response)
+    .filter((row) => dimensionValueOf(row) !== null)
     .map((row) => ({
       date: row.dimensionValues[0].value,
-      views: Number(row.metricValues[0].value) || 0,
+      views: Number(row.metricValues?.[0]?.value) || 0,
     }))
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
 export function dimensionRanking(response, limit = 10) {
   return rowsOf(response)
+    .filter((row) => dimensionValueOf(row) !== null)
     .slice(0, limit)
     .map((row) => ({
       name: row.dimensionValues[0].value,
-      views: Number(row.metricValues[0].value) || 0,
+      views: Number(row.metricValues?.[0]?.value) || 0,
     }));
 }
 
@@ -1710,8 +1732,11 @@ export function pageDisplay(path, titles, origin) {
 export function pageRanking(response, titles, origin, limit = 10) {
   const merged = new Map();
   for (const row of rowsOf(response)) {
-    const path = row.dimensionValues[0].value;
-    const views = Number(row.metricValues[0].value) || 0;
+    const path = dimensionValueOf(row);
+    if (path === null) {
+      continue;
+    }
+    const views = Number(row.metricValues?.[0]?.value) || 0;
     const key = canonicalPageKey(path);
     merged.set(key, (merged.get(key) || 0) + views);
   }
@@ -1741,7 +1766,7 @@ export function blogSpeedMap(response) {
       continue;
     }
     const slow = Number(row.metricValues?.[2]?.value) || 0;
-    const key = canonicalPageKey(row.dimensionValues[0].value);
+    const key = canonicalPageKey(row.dimensionValues?.[0]?.value);
     const match = ARTICLE_KEY_PATTERN.exec(key);
     if (!match) {
       continue;
@@ -1905,7 +1930,7 @@ export function parseTranslationStatus(data) {
     if (
       summary &&
       typeof summary === "object" &&
-      TRANSLATION_STATUSES.some((status) => isNum(summary[status]))
+      TRANSLATION_STATUSES.every((status) => isNum(summary[status]))
     ) {
       languages[key] = {
         fresh: translationCountOf(summary.fresh),
@@ -2039,12 +2064,12 @@ const ARTICLE_KEY_PATTERN = /^\/blog\/([0-9][A-Za-z0-9_-]{24,})$/;
 export function articlePageViews(response) {
   const merged = new Map();
   for (const row of rowsOf(response)) {
-    const key = canonicalPageKey(row.dimensionValues[0].value);
+    const key = canonicalPageKey(row.dimensionValues?.[0]?.value);
     const match = ARTICLE_KEY_PATTERN.exec(key);
     if (!match) {
       continue;
     }
-    const views = Number(row.metricValues[0].value) || 0;
+    const views = Number(row.metricValues?.[0]?.value) || 0;
     merged.set(match[1], (merged.get(match[1]) || 0) + views);
   }
   return [...merged.entries()].map(([id, views]) => ({ id, views }));
@@ -2123,7 +2148,7 @@ export function blogScrollMap(response) {
     if (!step) {
       continue;
     }
-    const key = canonicalPageKey(row.dimensionValues[0].value);
+    const key = canonicalPageKey(row.dimensionValues?.[0]?.value);
     const match = ARTICLE_KEY_PATTERN.exec(key);
     if (!match) {
       continue;
