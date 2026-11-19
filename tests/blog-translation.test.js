@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   parseTranslationStatus,
   fetchTranslationStatus,
@@ -232,5 +235,23 @@ describe("renderBlogTranslationStatus", () => {
     setSectionFailed(wrap);
     expect(wrap.textContent).toBe(SECTION_FAILED_TEXT);
     expect(wrap.querySelector("p").className).toContain("section-failed");
+  });
+});
+
+describe("translation status wiring (main.js)", () => {
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const mainJs = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");
+
+  it("warns on the loading line that the status read can take a while", () => {
+    // blog-gas computes the status from every article's
+    // snapshots per request, with no cache: a cold read takes
+    // minutes, so the section's loading line must not promise
+    // the usual quick fill-in — and the fetch must stay free of
+    // any timeout that could cut the read off (api.js's fetch
+    // helpers pass no AbortSignal anywhere).
+    expect(mainJs).toContain("blog-translation-status");
+    expect(mainJs).toContain("少し時間がかかります");
+    const apiJs = fs.readFileSync(path.join(root, "src", "api.js"), "utf8");
+    expect(apiJs).not.toContain("AbortController");
   });
 });

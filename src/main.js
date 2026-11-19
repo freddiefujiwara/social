@@ -493,7 +493,14 @@ function loadBlogSections(
   const translationEl = document.getElementById("blog-translation-status");
   setSectionLoading(dailyChartEl);
   setSectionLoading(sourcesEl);
-  setSectionLoading(translationEl);
+  // The translation status reads every article's snapshots on
+  // the blog-gas side with no cache behind it, so a cold read
+  // can take a couple of minutes: the loading line says so, and
+  // the fetch itself carries no timeout that could cut it off.
+  setSectionLoading(
+    translationEl,
+    "読み込み中…（全記事の翻訳状態を確認するため、少し時間がかかります）",
+  );
   setSectionLoading(document.getElementById("blog-genres"));
   setSectionLoading(document.getElementById("blog-article-body"));
   // The translation status is a single public payload off
