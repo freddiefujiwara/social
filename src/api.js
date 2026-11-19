@@ -868,9 +868,11 @@ export function xHistorySeries(rows) {
 // only), so the rest of the row is summed from the fetched
 // posts themselves and labelled with the scope they cover —
 // the newest 50 posts, the delivery cap on both sides of the
-// sheet: the post count, their combined views and the
-// per-post average — the average that otherwise only appears
-// inside the genre section.
+// sheet: their combined views and the per-post averages of
+// views and likes — the averages that otherwise only appear
+// inside the genre section. The post count itself is not a
+// box: the window is capped, so the count would just sit at
+// the cap and say nothing.
 export function xTotals(detail, historyRows) {
   const x = detail?.x ?? {};
   const change = historyDailyDelta(historyRows, "x_followers");
@@ -880,11 +882,20 @@ export function xTotals(detail, historyRows) {
   const totalViews = viewed.length
     ? viewed.reduce((sum, post) => sum + post.views, 0)
     : null;
+  const liked = posts.filter((post) => isNum(post?.likes));
+  const averageLikes = liked.length
+    ? liked.reduce((sum, post) => sum + post.likes, 0) / liked.length
+    : null;
   return [
     // X reports no follow / unfollow split either, so the
     // follower card itself carries the changes.
     followerTotalBox("フォロワー", x.followers, change, growth),
-    { label: "投稿数（直近50件）", value: formatCount(posts.length || null) },
+    {
+      label: "1投稿あたりの平均いいね",
+      value: formatCount(
+        averageLikes === null ? null : Math.round(averageLikes * 10) / 10,
+      ),
+    },
     { label: "表示回数の合計（直近50件）", value: formatCount(totalViews) },
     {
       label: "1投稿あたりの平均表示",

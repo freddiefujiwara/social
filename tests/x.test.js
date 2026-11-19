@@ -75,21 +75,23 @@ describe("X shaping", () => {
     });
   });
 
-  it("xTotals sums the fetched posts into count / total / average boxes", () => {
+  it("xTotals sums the fetched posts into total / average boxes", () => {
     const detail = {
       x: {
         followers: 321,
         recent_posts: [
-          { id: "1", views: 500 },
-          { id: "2", views: 301 },
-          { id: "3", views: null },
+          { id: "1", views: 500, likes: 10 },
+          { id: "2", views: 301, likes: 5 },
+          { id: "3", views: null, likes: null },
         ],
       },
     };
     const boxes = Object.fromEntries(
       xTotals(detail, []).map((box) => [box.label, box.value]),
     );
-    expect(boxes["投稿数（直近50件）"]).toBe("3");
+    // Only the posts with a like count feed the average, which
+    // keeps one decimal: (10 + 5) / 2 posts.
+    expect(boxes["1投稿あたりの平均いいね"]).toBe("7.5");
     // Only the posts with a view count feed the total / average.
     expect(boxes["表示回数の合計（直近50件）"]).toBe("801");
     expect(boxes["1投稿あたりの平均表示"]).toBe("401");
@@ -106,7 +108,7 @@ describe("X shaping", () => {
         window: null,
         windowLabel: null,
       },
-      { label: "投稿数（直近50件）", value: "—" },
+      { label: "1投稿あたりの平均いいね", value: "—" },
       { label: "表示回数の合計（直近50件）", value: "—" },
       { label: "1投稿あたりの平均表示", value: "—" },
     ]);
