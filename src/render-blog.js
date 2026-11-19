@@ -18,6 +18,7 @@ import { buildLineChartSvg, formatDateLabel } from "./chart.js";
 import { sortGenreRows } from "./genres.js";
 import { genreTreemap } from "./treemap.js";
 import { buildGenreTreemap } from "./render-treemap.js";
+import { clearLangPref, langPrefLabel, readLangPref } from "./lang-pref.js";
 
 export function renderRanking(elId, response, limit) {
   const list = document.getElementById(elId);
@@ -358,4 +359,43 @@ export function renderBlogTranslationStatus(status) {
     list.appendChild(li);
   }
   wrap.appendChild(list);
+}
+
+// The language-preference section: shows what the shared top/blog
+// language key currently holds (same origin, so plain local
+// storage) and offers the reset. Purely local state — it renders
+// synchronously, independent of the dashboard fetches.
+export function renderLangPref(resetDone = false) {
+  const wrap = document.getElementById("blog-lang-pref");
+  wrap.innerHTML = "";
+  const { shared, legacy } = readLangPref();
+  const current = document.createElement("p");
+  current.className = "meta";
+  current.textContent = shared
+    ? `現在の保存：${langPrefLabel(shared)}`
+    : "現在の保存：未保存";
+  wrap.appendChild(current);
+  if (legacy) {
+    const legacyNote = document.createElement("p");
+    legacyNote.className = "meta";
+    legacyNote.textContent = `移行前の旧キーにも「${langPrefLabel(legacy)}」が残っています。共有キーが無いときはブログがこちらを使います。`;
+    wrap.appendChild(legacyNote);
+  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "theme-toggle";
+  button.textContent = "保存をリセット";
+  button.disabled = !shared && !legacy;
+  button.addEventListener("click", () => {
+    clearLangPref();
+    renderLangPref(true);
+  });
+  wrap.appendChild(button);
+  if (resetDone) {
+    const done = document.createElement("p");
+    done.className = "meta";
+    done.textContent =
+      "リセットしました。次にトップページを開くか、ブログのフッターで言語を切り替えて新しい保存ができるまでは、ブログはブラウザの言語にしたがいます。";
+    wrap.appendChild(done);
+  }
 }

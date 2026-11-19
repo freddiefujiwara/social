@@ -115,6 +115,7 @@ import {
   renderBlogDaily,
   renderBlogGenres,
   renderBlogTranslationStatus,
+  renderLangPref,
 } from "./render-blog.js";
 import { createInstagramRenderer } from "./render-instagram.js";
 import { createYoutubeRenderer } from "./render-youtube.js";
@@ -503,6 +504,9 @@ function loadBlogSections(
   );
   setSectionLoading(document.getElementById("blog-genres"));
   setSectionLoading(document.getElementById("blog-article-body"));
+  // The language-preference section is local storage state, not
+  // a fetch: it renders immediately.
+  renderLangPref();
   // The translation status is a single public payload off
   // blog-gas: it renders when it lands and ends on the failure
   // line when it does not, independently of the GA-fed sections.
