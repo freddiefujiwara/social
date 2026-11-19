@@ -868,9 +868,11 @@ export function xHistorySeries(rows) {
 // only), so the rest of the row is summed from the fetched
 // posts themselves and labelled with the scope they cover —
 // the newest 50 posts, the delivery cap on both sides of the
-// sheet: the post count, their combined views and the
-// per-post average — the average that otherwise only appears
-// inside the genre section.
+// sheet: their combined views and the per-post averages of
+// views and likes — the averages that otherwise only appear
+// inside the genre section. The post count itself is not a
+// box: the window is capped, so the count would just sit at
+// the cap and say nothing.
 export function xTotals(detail, historyRows) {
   const x = detail?.x ?? {};
   const change = historyDailyDelta(historyRows, "x_followers");
@@ -880,11 +882,20 @@ export function xTotals(detail, historyRows) {
   const totalViews = viewed.length
     ? viewed.reduce((sum, post) => sum + post.views, 0)
     : null;
+  const liked = posts.filter((post) => isNum(post?.likes));
+  const averageLikes = liked.length
+    ? liked.reduce((sum, post) => sum + post.likes, 0) / liked.length
+    : null;
   return [
     // X reports no follow / unfollow split either, so the
     // follower card itself carries the changes.
     followerTotalBox("フォロワー", x.followers, change, growth),
-    { label: "投稿数（直近50件）", value: formatCount(posts.length || null) },
+    {
+      label: "1投稿あたりの平均いいね",
+      value: formatCount(
+        averageLikes === null ? null : Math.round(averageLikes * 10) / 10,
+      ),
+    },
     { label: "表示回数の合計（直近50件）", value: formatCount(totalViews) },
     {
       label: "1投稿あたりの平均表示",
@@ -1815,146 +1826,6 @@ export async function fetchBlogMeta(url, fetchImpl = fetch) {
     }
   }
   return meta;
-}
-
-// --- Blog translation status (blog-gas ?o=translation-status) ---
-//
-// blog-gas judges every article's English and Chinese snapshots
-// against the current Japanese article: "fresh" (the translation
-// matches the Japanese article's modified time), "stale" (a
-// translation exists but the Japanese article has moved on) or
-// "missing" (no translation yet). The payload is
-// { generatedAt, total, languages: { en: { fresh, stale,
-// missing }, zh: { ... } }, articles: [{ id, title, en, zh }] }
-// with the articles newest first. It is the only honest source
-// for the blog tab's 翻訳ステータス section: counting translated
-// titles instead would call an article translated while its
-// article page still serves Japanese, the split this status
-// exists to expose.
-
-export const TRANSLATION_LANGS = [
-  { key: "en", label: "英語" },
-  { key: "zh", label: "中国語" },
-];
-
-const TRANSLATION_STATUSES = ["fresh", "stale", "missing"];
-
-// A status the payload did not name (or named in a shape this
-// client predates) is certainly not fresh, so it reads as
-// "missing": the article lands on the attention list instead of
-// silently passing as translated.
-function translationStatusOf(value) {
-  return TRANSLATION_STATUSES.includes(value) ? value : "missing";
-}
-
-function translationCountOf(value) {
-  return isNum(value) && value > 0 ? Math.floor(value) : 0;
-}
-
-// Shape the payload into the section's model, or null when the
-// response is not a translation status at all (another payload
-// shape, an error page's JSON, junk): the section then ends on
-// its failure line rather than rendering invented numbers. The
-// per-language counts come from the payload's own summary; a
-// summary that is absent or incomplete is derived from the
-// article rows instead, so the two halves can never disagree
-// on screen. Article rows without a usable id are dropped, and
-// a row without a title falls back to its id, the same fallback
-// the per-article table uses.
-export function parseTranslationStatus(data) {
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return null;
-  }
-  if (
-    !Array.isArray(data.articles) &&
-    !(data.languages && typeof data.languages === "object")
-  ) {
-    return null;
-  }
-  const articles = (Array.isArray(data.articles) ? data.articles : [])
-    .filter(
-      (article) =>
-        article && typeof article.id === "string" && article.id.length > 0,
-    )
-    .map((article) => ({
-      id: article.id,
-      title:
-        typeof article.title === "string" && article.title
-          ? article.title
-          : article.id,
-      en: translationStatusOf(article.en),
-      zh: translationStatusOf(article.zh),
-    }));
-  const languages = {};
-  for (const { key } of TRANSLATION_LANGS) {
-    const summary =
-      data.languages && typeof data.languages === "object"
-        ? data.languages[key]
-        : null;
-    if (
-      summary &&
-      typeof summary === "object" &&
-      TRANSLATION_STATUSES.some((status) => isNum(summary[status]))
-    ) {
-      languages[key] = {
-        fresh: translationCountOf(summary.fresh),
-        stale: translationCountOf(summary.stale),
-        missing: translationCountOf(summary.missing),
-      };
-    } else {
-      languages[key] = { fresh: 0, stale: 0, missing: 0 };
-      for (const article of articles) {
-        languages[key][article[key]] += 1;
-      }
-    }
-  }
-  return {
-    generatedAt:
-      typeof data.generatedAt === "string" && data.generatedAt
-        ? data.generatedAt
-        : null,
-    total:
-      isNum(data.total) && data.total >= 0
-        ? Math.floor(data.total)
-        : articles.length,
-    languages,
-    articles,
-  };
-}
-
-// The articles that need attention: anything not fresh in at
-// least one language, in the payload's (newest-first) order,
-// each with its problems as [{ lang, label, status }] in
-// English-then-Chinese order.
-export function translationAttention(status) {
-  if (!status || !Array.isArray(status.articles)) {
-    return [];
-  }
-  return status.articles
-    .filter((article) => article.en !== "fresh" || article.zh !== "fresh")
-    .map((article) => ({
-      ...article,
-      problems: TRANSLATION_LANGS.filter(
-        ({ key }) => article[key] !== "fresh",
-      ).map(({ key, label }) => ({
-        lang: key,
-        label,
-        status: article[key],
-      })),
-    }));
-}
-
-// Fetch the translation status. Any failure — network, a
-// non-JSON answer, a payload of another shape — resolves to
-// null, never a rejection, so the caller can settle the section
-// on its failure line.
-export async function fetchTranslationStatus(url, fetchImpl = fetch) {
-  try {
-    const res = await fetchImpl(url);
-    return parseTranslationStatus(await res.json());
-  } catch {
-    return null;
-  }
 }
 
 // One title map out of the two blog title sources: the titles
