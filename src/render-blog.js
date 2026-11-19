@@ -10,6 +10,9 @@ import {
   mergeBlogTitles,
   blogGenreStats,
   formatCount,
+  formatJstDateTime,
+  TRANSLATION_LANGS,
+  translationAttention,
 } from "./api.js";
 import { buildLineChartSvg, formatDateLabel } from "./chart.js";
 import { sortGenreRows } from "./genres.js";
@@ -270,4 +273,89 @@ export function renderBlogGenres(pagesResponse, meta, rssTitles) {
   scroll.className = "table-scroll";
   scroll.appendChild(table);
   wrap.appendChild(scroll);
+}
+
+// --- Blog translation status (blog tab) ---
+// The per-language freshness of the blog's English / Chinese
+// translations, as blog-gas judges them against its own
+// snapshots (see parseTranslationStatus in api.js): one summary
+// box per language — how many of all articles are translated
+// and current, with the stale / untranslated counts spelled out
+// while any exist — then the articles that need attention, and
+// nothing but an all-clear line when none do. The counts are
+// article counts of public articles, so the boxes mark their
+// values public like the article count on the 記事ごと section;
+// the figures are blog-gas's operational state, not GA numbers.
+
+const TRANSLATION_STATUS_LABELS = { stale: "古い", missing: "未翻訳" };
+
+export function renderBlogTranslationStatus(status) {
+  const wrap = document.getElementById("blog-translation-status");
+  wrap.innerHTML = "";
+  if (status.generatedAt) {
+    const asOf = document.createElement("p");
+    asOf.className = "meta";
+    asOf.textContent = `${formatJstDateTime(status.generatedAt)} 時点の状態です`;
+    wrap.appendChild(asOf);
+  }
+  const row = document.createElement("div");
+  row.className = "totals-row";
+  for (const { key, label } of TRANSLATION_LANGS) {
+    const counts = status.languages[key];
+    const box = document.createElement("div");
+    box.className = "total-box";
+    const labelEl = document.createElement("div");
+    labelEl.className = "total-label";
+    labelEl.textContent = label;
+    const valueEl = document.createElement("div");
+    valueEl.className = "total-value amount-value is-public";
+    valueEl.textContent = `${counts.fresh}/${status.total}`;
+    box.append(labelEl, valueEl);
+    const problems = [
+      counts.stale ? `古い ${counts.stale}件` : "",
+      counts.missing ? `未翻訳 ${counts.missing}件` : "",
+    ].filter(Boolean);
+    if (problems.length) {
+      const detail = document.createElement("div");
+      detail.className = "kpi-delta";
+      detail.textContent = problems.join(" · ");
+      box.appendChild(detail);
+    }
+    row.appendChild(box);
+  }
+  wrap.appendChild(row);
+  const attention = translationAttention(status);
+  if (!attention.length) {
+    const p = document.createElement("p");
+    p.className = "meta";
+    p.textContent = "すべての記事の翻訳が最新です。";
+    wrap.appendChild(p);
+    return;
+  }
+  const head = document.createElement("h3");
+  head.className = "subsection-title";
+  head.textContent = "対応が必要な記事";
+  wrap.appendChild(head);
+  const list = document.createElement("ul");
+  list.className = "ranking";
+  for (const article of attention) {
+    const li = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = `${CONFIG.SITE_ORIGIN}/blog/${article.id}`;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = article.title;
+    li.appendChild(link);
+    const span = document.createElement("span");
+    span.className = "rank-value";
+    span.textContent = article.problems
+      .map(
+        (problem) =>
+          `${problem.label}：${TRANSLATION_STATUS_LABELS[problem.status]}`,
+      )
+      .join("／");
+    li.appendChild(span);
+    list.appendChild(li);
+  }
+  wrap.appendChild(list);
 }

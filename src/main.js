@@ -18,6 +18,7 @@ import {
   fetchArticleTitles,
   pageRanking,
   fetchBlogMeta,
+  fetchTranslationStatus,
   mergeBlogTitles,
   blogArticleList,
   blogScrollMap,
@@ -113,6 +114,7 @@ import {
   renderRanking,
   renderBlogDaily,
   renderBlogGenres,
+  renderBlogTranslationStatus,
 } from "./render-blog.js";
 import { createInstagramRenderer } from "./render-instagram.js";
 import { createYoutubeRenderer } from "./render-youtube.js";
@@ -406,6 +408,16 @@ async function loadDashboard() {
   detailPromise.catch(() => {});
   const historyPromise = fetchSnsHistory(CONFIG.GAS_ENDPOINT, auth());
   historyPromise.catch(() => {});
+  // The blog's translation status rides along too: public
+  // blog-gas metadata like the RSS feed and the titles payload,
+  // so no auth travels with it, and it settles on its own line
+  // whatever happens (fetchTranslationStatus resolves to null
+  // on any failure; the no-op catch only guards the case where
+  // the totals check fails first and the loader never runs).
+  const translationPromise = fetchTranslationStatus(
+    CONFIG.BLOG_TRANSLATION_STATUS_URL,
+  );
+  translationPromise.catch(() => {});
   const totals = await totalsPromise;
   if (!totals.ok) {
     if (shareToken) {
@@ -450,6 +462,7 @@ async function loadDashboard() {
     metaPromise,
     speedPromise,
     scrollPromise,
+    translationPromise,
   );
   // The dashboard is up: keep its SNS data current while the
   // page stays open (see the auto-refresh section below).
@@ -473,13 +486,28 @@ function loadBlogSections(
   metaPromise,
   speedPromise,
   scrollPromise,
+  translationPromise,
 ) {
   const dailyChartEl = document.getElementById("daily-chart");
   const sourcesEl = document.getElementById("top-sources");
+  const translationEl = document.getElementById("blog-translation-status");
   setSectionLoading(dailyChartEl);
   setSectionLoading(sourcesEl);
+  setSectionLoading(translationEl);
   setSectionLoading(document.getElementById("blog-genres"));
   setSectionLoading(document.getElementById("blog-article-body"));
+  // The translation status is a single public payload off
+  // blog-gas: it renders when it lands and ends on the failure
+  // line when it does not, independently of the GA-fed sections.
+  translationPromise
+    .then((status) => {
+      if (!status) {
+        setSectionFailed(translationEl);
+        return;
+      }
+      renderBlogTranslationStatus(status);
+    })
+    .catch(() => setSectionFailed(translationEl));
   // The two KPI boxes the page rows feed (the article count and
   // the per-article average) wait on the same load: they show
   // the loading wording, without the masking class — the
