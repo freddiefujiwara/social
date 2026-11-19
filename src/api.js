@@ -253,6 +253,19 @@ export function instagramTrendSeries(rows, maxDays = null) {
 
 const isNum = (value) => typeof value === "number" && Number.isFinite(value);
 
+// A list stored on a snapshot section, as every section list
+// reader shapes it: anything that is not a list yields an
+// empty one.
+const listOf = (section, key) =>
+  Array.isArray(section?.[key]) ? section[key] : [];
+
+// The partial-collection notes a snapshot section carries:
+// the named fields' non-empty strings, in field order.
+const errorNotesOf = (section, keys) =>
+  keys
+    .map((key) => section?.[key])
+    .filter((value) => typeof value === "string" && value.length > 0);
+
 export function formatCount(value) {
   return isNum(value) ? value.toLocaleString("ja-JP") : "—";
 }
@@ -679,8 +692,7 @@ export function mediaTypeLabel(type) {
 }
 
 export function youtubeVideos(detail) {
-  const list = detail?.youtube?.recent_videos;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.youtube, "recent_videos");
 }
 
 // The still image for one Instagram post, as collected into
@@ -814,18 +826,14 @@ export function threadsInteractions(detail) {
 // reposts, quotes }], with nulls wherever a number could not be
 // collected. Anything that is not a list yields an empty one.
 export function threadsPosts(detail) {
-  const list = detail?.threads?.recent_posts;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.threads, "recent_posts");
 }
 
 // Partial-collection notes ga-gas attaches to the Threads section
 // (empty in the normal case); shown as small print only when
 // present, like snsErrorNotes for the Instagram section.
 export function threadsErrorNotes(detail) {
-  const th = detail?.threads ?? {};
-  return ["detail_error", "posts_error"]
-    .map((key) => th[key])
-    .filter((value) => typeof value === "string" && value.length > 0);
+  return errorNotesOf(detail?.threads, ["detail_error", "posts_error"]);
 }
 
 // The YouTube subscriber trend for the YouTube tab: the same
@@ -1054,8 +1062,7 @@ export function xDailyUsage(historyRows, detail) {
 // with nulls wherever a number could not be collected. Anything
 // that is not a list yields an empty one.
 export function xPosts(detail) {
-  const list = detail?.x?.recent_posts;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.x, "recent_posts");
 }
 
 // The reaction facts social-gas stored from the notify file,
@@ -1075,8 +1082,7 @@ export function xReactions(detail) {
 // [{ actor_name, actor_username, collected_at }], newest
 // first. Anything that is not a list yields an empty one.
 export function xRecentFollows(detail) {
-  const list = detail?.x?.recent_follows;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.x, "recent_follows");
 }
 
 // The stored replies and quotes no notify data can attribute
@@ -1085,8 +1091,7 @@ export function xRecentFollows(detail) {
 // text, reaction_tweet_id, acted_at, collected_at }], newest
 // first. Anything that is not a list yields an empty one.
 export function xUnattributedReactions(detail) {
-  const list = detail?.x?.unattributed_reactions;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.x, "unattributed_reactions");
 }
 
 // One post's reaction facts grouped for the detail view:
@@ -1113,20 +1118,21 @@ export function xReactionGroups(facts) {
 // fields (the two halves travel in one call), so duplicates are
 // shown once.
 export function xErrorNotes(detail) {
-  const x = detail?.x ?? {};
-  return ["x_error", "posts_error", "usage_error"]
-    .map((key) => x[key])
-    .filter((value) => typeof value === "string" && value.length > 0)
-    .filter((value, index, all) => all.indexOf(value) === index);
+  return errorNotesOf(detail?.x, [
+    "x_error",
+    "posts_error",
+    "usage_error",
+  ]).filter((value, index, all) => all.indexOf(value) === index);
 }
 
 // Partial-collection notes ga-gas attaches to the snapshot (empty
 // in the normal case); shown as small print only when present.
 export function snsErrorNotes(detail) {
-  const ig = detail?.instagram ?? {};
-  return ["insights_error", "detail_error", "media_error"]
-    .map((key) => ig[key])
-    .filter((value) => typeof value === "string" && value.length > 0);
+  return errorNotesOf(detail?.instagram, [
+    "insights_error",
+    "detail_error",
+    "media_error",
+  ]);
 }
 
 // The Instagram account's daily follows / unfollows over the last
@@ -1135,8 +1141,7 @@ export function snsErrorNotes(detail) {
 // order, with nulls wherever a day's number could not be
 // collected. Anything that is not a list yields an empty one.
 export function instagramDailyFollows(detail) {
-  const list = detail?.instagram?.daily_follows;
-  return Array.isArray(list) ? list : [];
+  return listOf(detail?.instagram, "daily_follows");
 }
 
 // The collection error ga-gas attaches when the daily follows
@@ -1156,9 +1161,7 @@ export function instagramDailyFollowsError(detail) {
 // Posts whose JST day falls outside the series cannot be placed
 // on it and are left out.
 export function followChartDays(detail) {
-  const media = Array.isArray(detail?.instagram?.recent_media)
-    ? detail.instagram.recent_media
-    : [];
+  const media = listOf(detail?.instagram, "recent_media");
   const postsByDate = new Map();
   for (const post of media) {
     const key = post ? jstDateKey(post.posted_at) : null;
@@ -1488,9 +1491,7 @@ export function overviewKpis(detail, gaTotals, historyRows) {
 // returned rows are the raw recent-media objects (permalink,
 // caption, views, …), ready to render as links.
 export function topMedia(detail, limit = 5) {
-  const rows = Array.isArray(detail?.instagram?.recent_media)
-    ? detail.instagram.recent_media
-    : [];
+  const rows = listOf(detail?.instagram, "recent_media");
   return sortMedia(rows, "views", "desc").slice(0, limit);
 }
 

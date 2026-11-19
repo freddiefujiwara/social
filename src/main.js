@@ -15,13 +15,10 @@ import {
   revokeSession,
   totalsOf,
   dailySeries,
-  dimensionRanking,
   fetchArticleTitles,
   pageRanking,
   fetchBlogMeta,
   mergeBlogTitles,
-  blogArticlesByDate,
-  blogGenreStats,
   blogArticleList,
   blogScrollMap,
   blogSpeedMap,
@@ -30,79 +27,41 @@ import {
   dataAsOfText,
   snsHistoryRows,
   snsHistorySeries,
-  INSTAGRAM_TREND_DEFAULT_DAYS,
-  INSTAGRAM_TREND_PERIODS,
-  instagramTrendSeries,
   threadsHistorySeries,
   threadsTotals,
   threadsInteractions,
-  threadsPosts,
   threadsErrorNotes,
   xHistorySeries,
   xTotals,
-  xApiCreditSummary,
   xDailyUsage,
   xPosts,
   xReactions,
-  xRecentFollows,
-  xUnattributedReactions,
-  xReactionGroups,
   xErrorNotes,
   overviewKpis,
   topPostsByChannel,
   youtubeHistorySeries,
   articleViewStats,
   formatCount,
-  formatSeconds,
-  formatClockDuration,
-  isShortVideo,
-  formatWatchRate,
-  withWatchRate,
   formatJstDateTime,
-  formatJstDate,
-  snsOverview,
   snsInteractions,
   demographicsPyramid,
   topDemographics,
   sortMedia,
   captionHead,
-  mediaTypeLabel,
-  youtubeVideos,
-  youtubeTotals,
-  instagramThumbnailUrl,
-  mediaThumbnailShape,
-  youtubeThumbnailUrls,
-  isPlaceholderThumbnail,
-  thumbnailOrientation,
   snsErrorNotes,
-  instagramDailyFollowsError,
-  followChartDays,
 } from "./api.js";
 import {
   buildLineChartSvg,
-  buildFollowChartSvg,
   buildBarChartSvg,
-  formatDateLabel,
   formatDateFull,
 } from "./chart.js";
 import {
-  genreStatsForMedia,
-  genreStatsForThreads,
-  threadsGenreOptions,
-  filterThreadsByGenre,
   genreStatsForX,
   xGenreOptions,
   filterXByGenre,
   classifyXText,
-  filterMediaByPeriod,
-  filterMediaByGenre,
-  mediaGenreOptions,
-  classifyCaption,
   articleGenreOptions,
   filterArticlesByGenre,
-  mediaDateRange,
-  sortGenreRows,
-  formatRate,
 } from "./genres.js";
 import {
   tabFromHash,
@@ -111,7 +70,7 @@ import {
   hasTabPart,
   hashWithoutTab,
 } from "./tabs.js";
-import { channelTreemap, genreTreemap } from "./treemap.js";
+import { channelTreemap } from "./treemap.js";
 import {
   parseShareToken,
   buildShareUrl,
@@ -137,6 +96,33 @@ import {
   setSectionLoading,
   setSectionFailed,
 } from "./section-status.js";
+import { overviewState } from "./overview-state.js";
+import {
+  countSpan,
+  totalValueClass,
+  appendDeltaLine,
+  wireSortableTable,
+  updateSortHeaders,
+  renderGenreFilterTabs,
+  renderPostGenres,
+  fillDemoRanking,
+  numCell,
+} from "./render-common.js";
+import { tileOneLineLabel } from "./render-treemap.js";
+import {
+  renderRanking,
+  renderBlogDaily,
+  renderBlogGenres,
+} from "./render-blog.js";
+import { createInstagramRenderer } from "./render-instagram.js";
+import { createYoutubeRenderer } from "./render-youtube.js";
+import { createThreadsRenderer } from "./render-threads.js";
+import {
+  buildXReactionDetail,
+  renderXRecentFollows,
+  renderXUnattributed,
+  renderXApiCredit,
+} from "./render-x.js";
 
 if (isStagingBuild()) {
   showStagingBanner();
@@ -234,32 +220,6 @@ privacyBtn.addEventListener("click", () => {
   renderPrivacy();
 });
 renderPrivacy();
-
-// A raw count as a masking-ready span: figures the renderers
-// splice into a line of text ride in one of these, so the
-// privacy CSS (which blurs .amount-value) reaches them too.
-// A figure the owner already publishes elsewhere (the top
-// page's follower counts) passes isPublic and also takes
-// .is-public, so masking leaves it readable like the
-// percentages.
-function countSpan(value, isPublic = false) {
-  const span = document.createElement("span");
-  span.className = "amount-value" + (isPublic ? " is-public" : "");
-  span.textContent = formatCount(value);
-  return span;
-}
-
-// The total-box value classes: every value is a raw count and
-// takes .amount-value, except a percentage （割合） and the
-// items flagged public (figures already published on the top
-// page), which also take .is-public so they stay readable
-// while masking — the asset / health exemption.
-function totalValueClass(item) {
-  const isPercent =
-    typeof item.value === "string" && item.value.trim().endsWith("%");
-  const isPublic = isPercent || item.public === true;
-  return "total-value amount-value" + (isPublic ? " is-public" : "");
-}
 
 const auth = () => ({ sessionToken, shareToken });
 
@@ -499,22 +459,6 @@ async function loadDashboard() {
   return true;
 }
 
-function renderRanking(elId, response, limit) {
-  const list = document.getElementById(elId);
-  list.innerHTML = "";
-  for (const item of dimensionRanking(response, limit)) {
-    const li = document.createElement("li");
-    li.textContent = item.name;
-    const span = document.createElement("span");
-    // Blog-tab figures are unpublished GA rollups: masked
-    // like every other raw count.
-    span.className = "rank-value amount-value";
-    span.textContent = item.views.toLocaleString();
-    li.appendChild(span);
-    list.appendChild(li);
-  }
-}
-
 // The blog tab's sections, filled in as their responses land.
 // Each chain renders only its own sections, so a slow (or failed)
 // response holds up nothing else. Until a section's response
@@ -598,118 +542,6 @@ function loadBlogSections(
     })
     .catch(() => setSectionFailed(sourcesEl));
   fillBlogPages(pagesPromise, titlesPromise, metaPromise, speedPromise, scrollPromise);
-}
-
-// --- Blog daily chart (日ごとの表示回数と公開した記事) ---
-// The blog counterpart of the Instagram follow chart's overlay:
-// days that carry a published article get a ▼ marker (with the
-// article count beside it when the day has more than one), and
-// tapping a marked day's column — or the marker — scrolls to
-// that day's entry in the list below and highlights both, the
-// same operation as the follow chart's posted days. Article
-// dates come from the titles' leading "YYYY-MM-DD" (see
-// blogArticlesByDate); articles whose day falls outside the
-// chart's range cannot be placed on it and stay out of the list.
-// The day entries' view counts are the blog's daily GA figures,
-// so they mask like every other blog number.
-
-function jumpToBlogDay(wrap, date) {
-  for (const el of wrap.querySelectorAll(".blog-day-hit.selected")) {
-    el.classList.remove("selected");
-  }
-  for (const el of wrap.querySelectorAll(".blog-day-entry.highlight")) {
-    el.classList.remove("highlight");
-  }
-  const hit = wrap.querySelector(`.blog-day-hit[data-date="${date}"]`);
-  if (hit) {
-    hit.classList.add("selected");
-  }
-  const entry = wrap.querySelector(`.blog-day-entry[data-date="${date}"]`);
-  if (entry) {
-    entry.classList.add("highlight");
-    entry.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}
-
-function renderBlogDaily(points, titles) {
-  const wrap = document.getElementById("daily-chart");
-  wrap.innerHTML = "";
-  const articlesByDate = new Map(
-    blogArticlesByDate(titles, CONFIG.SITE_ORIGIN).map((day) => [
-      day.date,
-      day.articles,
-    ]),
-  );
-  const markedDays = new Map();
-  const viewsByDate = new Map();
-  for (const point of points) {
-    viewsByDate.set(point.date, point.views);
-    const articles = articlesByDate.get(point.date);
-    if (articles && articles.length) {
-      markedDays.set(point.date, articles.length);
-    }
-  }
-  // The blog's daily figures are 28-day GA rollups that no
-  // public page prints, so the chart's max label masks like
-  // the other charts'.
-  const chart = document.createElement("div");
-  chart.innerHTML = buildLineChartSvg(points, { markedDays });
-  chart.addEventListener("click", (event) => {
-    const hit = event.target.closest?.("[data-date]");
-    if (hit && articlesByDate.has(hit.dataset.date)) {
-      jumpToBlogDay(wrap, hit.dataset.date);
-    }
-  });
-  wrap.appendChild(chart);
-  if (!markedDays.size) {
-    return;
-  }
-  const legend = document.createElement("p");
-  legend.className = "meta";
-  legend.textContent =
-    "▼は記事を公開した日です。▼や列を押すと、その日の記事に飛びます。";
-  wrap.appendChild(legend);
-  const head = document.createElement("h4");
-  head.className = "demo-list-title";
-  head.textContent = "記事を公開した日";
-  wrap.appendChild(head);
-  const postedDays = [...markedDays.keys()].sort().reverse();
-  for (const date of postedDays) {
-    const articles = articlesByDate.get(date);
-    const entry = document.createElement("div");
-    entry.className = "blog-day-entry";
-    entry.dataset.date = date;
-    const dayLine = document.createElement("p");
-    dayLine.className = "meta";
-    dayLine.append(`${formatDateLabel(date)}：表示回数 `);
-    const views = document.createElement("span");
-    views.className = "amount-value";
-    views.textContent = formatCount(viewsByDate.get(date) ?? 0);
-    dayLine.append(views, "回");
-    if (articles.length > 1) {
-      dayLine.append(` · 記事${articles.length}件`);
-    }
-    entry.appendChild(dayLine);
-    const list = document.createElement("ul");
-    list.className = "ranking";
-    for (const article of articles) {
-      const li = document.createElement("li");
-      const link = document.createElement("a");
-      link.href = article.href;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = article.title;
-      li.appendChild(link);
-      list.appendChild(li);
-    }
-    entry.appendChild(list);
-    wrap.appendChild(entry);
-  }
-  const note = document.createElement("p");
-  note.className = "meta";
-  note.textContent =
-    "表示回数はブログ全体の日次です。記事との対応は公開日による重ね合わせで、どの記事がきっかけかまでは分かりません。";
-  wrap.appendChild(note);
 }
 
 // The page rows could not be read: every section they feed
@@ -812,263 +644,6 @@ async function fillBlogPages(pagesPromise, titlesPromise, metaPromise, speedProm
   perArticleEl.textContent = formatCount(articleStats.perArticle);
   perArticleEl.classList.remove("section-pending");
   perArticleEl.classList.add("amount-value");
-}
-
-// --- Genre visuals (Instagram / blog genre sections) ---
-// Both genre sections lead with the visuals, in the same order:
-// a treemap whose tile area is the genre's per-item average and
-// the legend directly under the tiles; the full table follows
-// below (its 平均 column carries the same average as a number,
-// so no separate bar list repeats it). Each tile
-// draws the text lines its size can hold (see tileLabelLevel):
-// the name and the figure ride on every tile, down to micro
-// type on the smallest ones, and the legend under the map
-// lists every genre's exact average and total.
-// Tile colour is a heat scale on the same average (see
-// genreHeatBackground): the biggest average on show is the
-// bluest, the smallest keeps the plain tile colour.
-
-// One-line micro label for the tiles too small for the stacked
-// lines: "micro-v" runs the line vertically down a tall narrow
-// tile, "micro-h" keeps it horizontal on a wide flat one. The
-// name and the figure share the single line.
-function tileOneLineLabel(level, name, valueText, isPublic = false) {
-  const el = document.createElement("div");
-  el.className =
-    level === "micro-v" ? "treemap-tile-vlabel" : "treemap-tile-hlabel";
-  // The name stays readable; only the figure is a raw count and
-  // rides in a masking-ready span — unless the figure is one of
-  // the published ones, which takes .is-public instead.
-  el.append(`${name} `);
-  const value = document.createElement("span");
-  value.className = "amount-value" + (isPublic ? " is-public" : "");
-  value.textContent = valueText;
-  el.appendChild(value);
-  return el;
-}
-
-// Draws a genre (or, for the blog, tag) treemap and its legend.
-// With options.isPublic every figure also takes .is-public;
-// no current caller passes it — the blog genre section's figures
-// are unpublished 28-day rollups and mask like the SNS genre
-// sections' — but the renderer keeps the switch the channel
-// map's per-figure flags use elsewhere.
-function renderGenreTreemap(mapEl, legendEl, map, options = {}) {
-  const valueClass = (base) =>
-    base + " amount-value" + (options.isPublic ? " is-public" : "");
-  mapEl.innerHTML = "";
-  if (!map.tiles.length) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent = "—";
-    mapEl.appendChild(p);
-  }
-  for (const tile of map.tiles) {
-    const div = document.createElement("div");
-    div.className = "treemap-tile";
-    div.style.left = `${tile.x}%`;
-    div.style.top = `${tile.y}%`;
-    div.style.width = `${tile.w}%`;
-    div.style.height = `${tile.h}%`;
-    if (tile.heat) {
-      div.style.background = tile.heat;
-    }
-    // The title repeats the figures as a hover tooltip, which
-    // CSS cannot blur; while masking is on it is left off (the
-    // legend below the map carries the same figures, masked).
-    if (!maskingOn()) {
-      div.title = `${tile.name}：${tile.avgText}、${tile.totalText}`;
-    }
-    // Draw the lines this tile's level allows: the name and
-    // the figure always ride, in type sized to the tile; the
-    // total line joins only on the roomiest tiles.
-    const level = tile.labelLevel ?? (tile.labelRoom ? "full" : "none");
-    div.classList.add(`level-${level}`);
-    if (level === "micro-v" || level === "micro-h") {
-      div.appendChild(
-        tileOneLineLabel(level, tile.name, tile.avgLabel, options.isPublic),
-      );
-    } else if (level !== "none") {
-      const name = document.createElement("div");
-      name.className = "treemap-tile-name";
-      name.textContent = tile.name;
-      div.appendChild(name);
-      const value = document.createElement("div");
-      value.className = valueClass("treemap-tile-value");
-      value.textContent = tile.avgLabel;
-      div.appendChild(value);
-      if (level === "full") {
-        const total = document.createElement("div");
-        total.className = valueClass("treemap-tile-sub");
-        total.textContent = tile.totalText;
-        div.appendChild(total);
-      }
-    }
-    mapEl.appendChild(div);
-  }
-  legendEl.innerHTML = "";
-  for (const entry of map.legend) {
-    const li = document.createElement("li");
-    const name = document.createElement("span");
-    name.className = "channel-legend-name";
-    name.textContent = entry.name;
-    li.appendChild(name);
-    const value = document.createElement("span");
-    value.className = valueClass("channel-legend-value");
-    value.textContent = entry.avgText;
-    li.appendChild(value);
-    const total = document.createElement("span");
-    total.className = valueClass("channel-legend-note");
-    total.textContent = entry.totalText;
-    li.appendChild(total);
-    legendEl.appendChild(li);
-  }
-}
-
-function buildGenreTreemap(map, noteText, options = {}) {
-  const frag = document.createDocumentFragment();
-  const mapEl = document.createElement("div");
-  mapEl.className = "treemap";
-  const legendEl = document.createElement("ul");
-  legendEl.className = "channel-legend";
-  renderGenreTreemap(mapEl, legendEl, map, options);
-  frag.appendChild(mapEl);
-  frag.appendChild(legendEl);
-  if (noteText) {
-    const note = document.createElement("p");
-    note.className = "meta";
-    note.textContent = noteText;
-    frag.appendChild(note);
-  }
-  return frag;
-}
-
-// --- Blog genre rollup (blog tab) ---
-// Joins the GA page rows with the blog's article tag map. Without
-// the map there is nothing honest to group by: the section then
-// carries a short note instead of a table. Column headers sort
-// the rows, like the Instagram tables; the last render's inputs
-// are kept so a header click can re-render in the new order.
-
-let blogGenreSort = { key: "totalViews", dir: "desc" };
-let blogGenreContext = null;
-
-const BLOG_GENRE_COLUMNS = [
-  { key: "tag", label: "タグ", numeric: false },
-  { key: "count", label: "記事数", numeric: true },
-  { key: "totalViews", label: "表示回数 合計", numeric: true },
-  { key: "perArticle", label: "1記事あたり", numeric: true },
-  { key: "top", label: "最も読まれた記事", numeric: false },
-];
-
-function renderBlogGenres(pagesResponse, meta, rssTitles) {
-  blogGenreContext = { pagesResponse, meta, rssTitles };
-  const wrap = document.getElementById("blog-genres");
-  wrap.innerHTML = "";
-  if (!meta || !meta.tags || meta.tags.size === 0) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent =
-      "記事のタグ情報を取得できなかったため、ジャンル別は表示していません。";
-    wrap.appendChild(p);
-    return;
-  }
-  // The RSS titles win; the titles payload fills any gap.
-  const titles = mergeBlogTitles(meta.titles, rssTitles);
-  const rows = sortGenreRows(
-    blogGenreStats(pagesResponse, meta.tags, titles, CONFIG.SITE_ORIGIN),
-    blogGenreSort.key,
-    blogGenreSort.dir,
-  );
-  if (!rows.length) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent = "—";
-    wrap.appendChild(p);
-    return;
-  }
-  // The tiles (area = views per article) summarise the same
-  // rows the table below lists in full. Every figure here is a
-  // last-28-days GA rollup that no public page prints, so the
-  // whole section masks like the SNS genre sections.
-  wrap.appendChild(
-    buildGenreTreemap(
-      genreTreemap(rows, (row) => ({
-        name: row.tag,
-        avg: row.perArticle,
-        avgText: `1記事あたり ${formatCount(row.perArticle)}`,
-        totalText: `合計 ${formatCount(row.totalViews)}`,
-      })),
-      "タイルの面積は1記事あたり表示回数の大きさです。色が青いほど1記事あたり表示回数が多いです。",
-    ),
-  );
-  const table = document.createElement("table");
-  table.className = "data-table";
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  for (const column of BLOG_GENRE_COLUMNS) {
-    const th = document.createElement("th");
-    th.className = (column.numeric ? "num " : "") + "sortable";
-    const active = blogGenreSort.key === column.key;
-    th.textContent =
-      column.label +
-      (active ? (blogGenreSort.dir === "desc" ? " ↓" : " ↑") : "");
-    th.addEventListener("click", () => {
-      if (blogGenreSort.key === column.key) {
-        blogGenreSort = {
-          key: column.key,
-          dir: blogGenreSort.dir === "desc" ? "asc" : "desc",
-        };
-      } else {
-        blogGenreSort = { key: column.key, dir: "desc" };
-      }
-      if (blogGenreContext) {
-        renderBlogGenres(
-          blogGenreContext.pagesResponse,
-          blogGenreContext.meta,
-          blogGenreContext.rssTitles,
-        );
-      }
-    });
-    headRow.appendChild(th);
-  }
-  thead.appendChild(headRow);
-  table.appendChild(thead);
-  const tbody = document.createElement("tbody");
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    const tagTd = document.createElement("td");
-    tagTd.textContent = row.tag;
-    tr.appendChild(tagTd);
-    for (const value of [row.count, row.totalViews, row.perArticle]) {
-      const td = document.createElement("td");
-      td.className = "num amount-value";
-      td.textContent = formatCount(value);
-      tr.appendChild(td);
-    }
-    const topTd = document.createElement("td");
-    if (row.top) {
-      const link = document.createElement("a");
-      link.href = row.top.href;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = row.top.title;
-      topTd.appendChild(link);
-      const span = document.createElement("span");
-      span.className = "rank-value amount-value";
-      span.textContent = formatCount(row.top.views);
-      topTd.appendChild(span);
-    } else {
-      topTd.textContent = "—";
-    }
-    tr.appendChild(topTd);
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  const scroll = document.createElement("div");
-  scroll.className = "table-scroll";
-  scroll.appendChild(table);
-  wrap.appendChild(scroll);
 }
 
 // --- Blog per-article table (blog tab) ---
@@ -1219,34 +794,6 @@ function renderBlogArticles(pagesResponse, meta, rssTitles, scrollMap, speedMap)
 }
 
 // --- Overview tab ---
-// The overview pulls its numbers from three independent loads (GA
-// totals, the SNS snapshot, the SNS history). Each loader stores
-// its result here and re-renders; a figure whose load has not
-// arrived yet carries that load's state line (kpiLoadState /
-// topPostsPendingText) instead of a bare "—", and carries no
-// change line.
-
-const overviewState = {
-  gaTotals: null,
-  detail: null,
-  // Whether each late-arriving load has finished (and whether
-  // it failed). Sections filled by a load that is still in
-  // flight show the loading line; once it has failed they show
-  // the failure line; only a settled load may fall back to a
-  // section's ordinary empty state. See section-status.js.
-  detailSettled: false,
-  detailFailed: false,
-  historyRows: null,
-  historySettled: false,
-  historyFailed: false,
-  // The blog's top articles for the overview's per-channel top
-  // lists, ranked from the GA page rows when the report lands
-  // (null until then; the blog section shows its load state).
-  blogTop: null,
-  blogSettled: false,
-  blogFailed: false,
-};
-
 // Puts a not-yet-filled container into its load state — the
 // loading line while the load behind it is in flight, the
 // failure line once it has failed — and reports whether it did:
@@ -1275,33 +822,6 @@ function fillHistoryPending(el) {
     return true;
   }
   return false;
-}
-
-// The 前日比 line under a card's value, shared by the overview
-// KPI cards and any total box that carries a change (the
-// Instagram tab's フォロー / フォロー解除 cards mirror the
-// overview's): an increase is green and a decrease red —
-// except on the cards flagged invert (フォロー解除）, where
-// an increase is the bad direction and takes the red instead.
-// The line is one of this page's own analysis figures, so it
-// takes .amount-value and stays masked like the other numbers
-// (never .is-public). Cards without a delta get no line.
-function appendDeltaLine(box, item) {
-  if (!item.delta) {
-    return;
-  }
-  const delta = document.createElement("div");
-  const sign = item.delta.startsWith("+")
-    ? 1
-    : item.delta.startsWith("-")
-      ? -1
-      : 0;
-  const good = item.invert ? sign < 0 : sign > 0;
-  const bad = item.invert ? sign > 0 : sign < 0;
-  delta.className =
-    "kpi-delta amount-value" + (good ? " up" : bad ? " down" : "");
-  delta.textContent = `前日比 ${item.delta}`;
-  box.appendChild(delta);
 }
 
 function fillKpiBoxes(items) {
@@ -1578,14 +1098,6 @@ function renderOverview() {
 const snsStatusEl = document.getElementById("sns-status");
 const snsBodyEl = document.getElementById("sns-body");
 
-let snsMediaRows = [];
-// The media table starts sorted by views, most-watched first.
-let snsSort = { key: "views", dir: "desc", wired: false };
-// The per-post table's genre filter: null shows every post (the
-// すべて button). Independent of the genre section's period
-// selector — the filter always covers the full fetched list.
-let snsGenreFilter = null;
-
 function fillTotalBoxes(elId, items) {
   const wrap = document.getElementById(elId);
   wrap.innerHTML = "";
@@ -1600,24 +1112,8 @@ function fillTotalBoxes(elId, items) {
     value.textContent = item.value;
     box.appendChild(label);
     box.appendChild(value);
-    if (item.delta) {
-      const delta = document.createElement("div");
-      // The same change line as the overview KPI cards: an
-      // increase is green and a decrease red — except on the
-      // cards flagged invert, where an increase is the bad
-      // direction and takes the red instead.
-      const sign = item.delta.startsWith("+")
-        ? 1
-        : item.delta.startsWith("-")
-          ? -1
-          : 0;
-      const good = item.invert ? sign < 0 : sign > 0;
-      const bad = item.invert ? sign > 0 : sign < 0;
-      delta.className =
-        "kpi-delta amount-value" + (good ? " up" : bad ? " down" : "");
-      delta.textContent = `前日比 ${item.delta}`;
-      box.appendChild(delta);
-    }
+    // The same change line as the overview KPI cards.
+    appendDeltaLine(box, item);
     if (item.window) {
       // The trailing-window change line of a merged follower
       // card （過去◯日間 +2): the same styling and masking as
@@ -1639,499 +1135,39 @@ function fillTotalBoxes(elId, items) {
   }
 }
 
-function fillDemoRanking(elId, items) {
-  const list = document.getElementById(elId);
-  list.innerHTML = "";
-  if (!items.length) {
-    const li = document.createElement("li");
-    li.textContent = "—";
-    list.appendChild(li);
-    return;
-  }
-  for (const item of items) {
-    const li = document.createElement("li");
-    li.textContent = item.name;
-    const span = document.createElement("span");
-    span.className = "rank-value amount-value";
-    span.textContent = formatCount(item.value);
-    li.appendChild(span);
-    list.appendChild(li);
-  }
-}
+// The tab renderers that live in their own modules, wired
+// with the overview helpers they share with the sections that
+// stayed here (the total-box filler and the two load-state
+// gates). Their view state (the fetched rows, sort orders,
+// genre filters) lives inside the modules.
+const instagramView = createInstagramRenderer({
+  fillTotalBoxes,
+  fillHistoryPending,
+});
+const youtubeView = createYoutubeRenderer({
+  fillTotalBoxes,
+  fillDetailPending,
+});
+const threadsView = createThreadsRenderer();
 
-// The genre filter buttons above a per-item table (the
-// Instagram tab's 投稿ごと and the blog tab's 記事ごと share
-// this renderer, so the two tables feel the same): すべて plus
-// one button per genre that has items, each labelled with its
-// item count. `total` is the count on the すべて button — the
-// caller computes it, since a blog article with several tags
-// counts once per tag in the options but is still one article.
-// Clicking a button reports the genre (null for すべて) through
-// onSelect; the caller owns the filter state and re-renders.
-function renderGenreFilterTabs(
-  wrap,
-  { total, options, active, onSelect },
-) {
-  wrap.innerHTML = "";
-  const buttons = [{ genre: null, name: "すべて", count: total }];
-  for (const option of options) {
-    buttons.push({
-      genre: option.genre,
-      name: option.genre,
-      count: option.count,
-    });
-  }
-  for (const entry of buttons) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tab-button genre-filter-button";
-    const isActive = active === entry.genre;
-    btn.classList.toggle("active", isActive);
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", String(isActive));
-    // The item count is a raw count: it rides in a masking span
-    // inside the button's label.
-    btn.append(`${entry.name}（`, countSpan(entry.count), "）");
-    btn.addEventListener("click", () => onSelect(entry.genre));
-    wrap.appendChild(btn);
-  }
-}
-
-// The buttons are rebuilt from the current media list on every
-// SNS render, so they always match the genres the classifier
-// produces. Clicking one narrows the table below to that genre;
-// the sort order is kept.
-function renderMediaGenreTabs() {
-  const wrap = document.getElementById("sns-media-genre-tabs");
-  const options = mediaGenreOptions(snsMediaRows);
-  const total = options.reduce((sum, option) => sum + option.count, 0);
-  renderGenreFilterTabs(wrap, {
-    total,
-    options,
-    active: snsGenreFilter,
-    onSelect: (genre) => {
-      snsGenreFilter = genre;
-      renderMediaGenreTabs();
-      renderMediaTable();
-    },
-  });
-}
-
-// One post-list thumbnail: a fixed-size frame the row height
-// never depends on, with the image cover-cropped into it. `shape`
-// names the frame's aspect — "vertical" (reels), "square"
-// (photos) or "horizontal" (wide videos). `candidates` are image
-// URLs in order of preference: one that fails to load falls
-// through to the next, and when none is left the frame simply
-// stays empty, so a missing or expired image never breaks the
-// row. With `autoShape` (YouTube, whose URL shape serves both
-// orientations) a candidate that loads as YouTube's 120x90
-// placeholder also falls through, and the frame adopts the
-// loaded image's own aspect once it arrives.
-function thumbnailCell({ candidates = [], shape = "square", autoShape = false }) {
-  const td = document.createElement("td");
-  td.className = "thumb-cell";
-  const frame = document.createElement("span");
-  frame.className = `thumb-frame thumb-${shape}`;
-  const urls = candidates.filter(
-    (url) => typeof url === "string" && url.length > 0,
+// The head line and line chart of a single-series trend,
+// shared by the YouTube / Threads / X tabs' trend sections:
+// the latest value (one of the published follower figures, so
+// exempt from masking) with the collected range, then the
+// chart itself.
+function appendTrendChart(wrap, item) {
+  const head = document.createElement("p");
+  head.className = "meta";
+  head.append(
+    `${item.label}：最新 `,
+    countSpan(item.latest, true),
+    `（${formatJstDateTime(item.firstAt)} 〜 ${formatJstDateTime(item.lastAt)}）`,
   );
-  if (urls.length) {
-    const img = document.createElement("img");
-    img.className = "thumb-img";
-    img.alt = "";
-    img.loading = "lazy";
-    let index = 0;
-    const advance = () => {
-      index += 1;
-      if (index < urls.length) {
-        img.src = urls[index];
-      } else {
-        img.remove();
-      }
-    };
-    img.addEventListener("error", advance);
-    img.addEventListener("load", () => {
-      if (
-        autoShape &&
-        isPlaceholderThumbnail(img.naturalWidth, img.naturalHeight)
-      ) {
-        advance();
-        return;
-      }
-      if (autoShape) {
-        const orientation = thumbnailOrientation(
-          img.naturalWidth,
-          img.naturalHeight,
-        );
-        if (orientation) {
-          frame.className = `thumb-frame thumb-${orientation}`;
-        }
-      }
-    });
-    img.src = urls[0];
-    frame.appendChild(img);
-  }
-  td.appendChild(frame);
-  return td;
-}
-
-function renderMediaTable() {
-  const tbody = document.getElementById("sns-media-body");
-  tbody.innerHTML = "";
-  const rows = sortMedia(
-    filterMediaByGenre(snsMediaRows, snsGenreFilter),
-    snsSort.key,
-    snsSort.dir,
-  );
-  if (!rows.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 13;
-    td.textContent = "データがありません";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-  const numCell = (value, format = formatCount) => {
-    const td = document.createElement("td");
-    td.className = "num amount-value";
-    td.textContent = format(value);
-    return td;
-  };
-  for (const media of rows) {
-    const tr = document.createElement("tr");
-    tr.appendChild(
-      thumbnailCell({
-        candidates: [instagramThumbnailUrl(media)],
-        shape: mediaThumbnailShape(media),
-      }),
-    );
-    const dateTd = document.createElement("td");
-    dateTd.className = "nowrap";
-    dateTd.textContent = formatJstDateTime(media.posted_at);
-    tr.appendChild(dateTd);
-    const captionTd = document.createElement("td");
-    captionTd.className = "caption-cell";
-    // The caption itself is the link to the post, the same
-    // shape as the Threads and X tables (whose body text links
-    // out); without a permalink it stays plain text.
-    const head = captionHead(media.caption);
-    if (media.permalink) {
-      const link = document.createElement("a");
-      link.href = media.permalink;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = head;
-      captionTd.appendChild(link);
-    } else {
-      captionTd.textContent = head;
-    }
-    tr.appendChild(captionTd);
-    // The genre the same classifier assigns for the genre
-    // rollup and the filter buttons above, shown per post so a
-    // row explains itself without switching the filter. A genre
-    // name is a label, not a number, so it is never masked.
-    const genreTd = document.createElement("td");
-    genreTd.className = "nowrap";
-    genreTd.textContent = classifyCaption(media.caption);
-    tr.appendChild(genreTd);
-    const typeTd = document.createElement("td");
-    typeTd.className = "nowrap";
-    typeTd.textContent = mediaTypeLabel(media.type);
-    tr.appendChild(typeTd);
-    tr.appendChild(numCell(media.views));
-    tr.appendChild(numCell(media.reach));
-    tr.appendChild(numCell(media.likes));
-    tr.appendChild(numCell(media.comments));
-    tr.appendChild(numCell(media.shares));
-    tr.appendChild(numCell(media.saves));
-    tr.appendChild(numCell(media.avg_watch_sec, formatSeconds));
-    // The watch rate is a percentage, and percentages are not
-    // privacy-masked, so this cell skips the amount-value class
-    // the count cells carry.
-    const rateTd = document.createElement("td");
-    rateTd.className = "num";
-    rateTd.textContent = formatWatchRate(media.watch_rate);
-    tr.appendChild(rateTd);
-    tbody.appendChild(tr);
-  }
-  updateSortHeaders("sns-media-table", snsSort);
-}
-
-// Column-header sorting shared by the per-item tables (the
-// Instagram tab's 投稿ごと, the blog tab's 記事ごと and the
-// per-post / per-video tables of Threads, X and YouTube): the
-// first click on a header sorts descending by that column,
-// clicking the same header again flips the direction, and the
-// active header carries a ↓ / ↑ mark. `sortState` is the
-// table's own { key, dir, wired } object; render redraws the
-// table body (and calls updateSortHeaders) after a click.
-function wireSortableTable(tableId, sortState, render) {
-  if (sortState.wired) {
-    return;
-  }
-  sortState.wired = true;
-  document.querySelectorAll(`#${tableId} th.sortable`).forEach((th) => {
-    th.dataset.label = th.textContent;
-    th.addEventListener("click", () => {
-      const key = th.dataset.sortKey;
-      if (sortState.key === key) {
-        sortState.dir = sortState.dir === "desc" ? "asc" : "desc";
-      } else {
-        sortState.key = key;
-        sortState.dir = "desc";
-      }
-      render();
-    });
-  });
-}
-
-function updateSortHeaders(tableId, sortState) {
-  document.querySelectorAll(`#${tableId} th.sortable`).forEach((th) => {
-    const active = th.dataset.sortKey === sortState.key;
-    th.textContent =
-      th.dataset.label + (active ? (sortState.dir === "desc" ? " ↓" : " ↑") : "");
-  });
-}
-
-function wireMediaSort() {
-  wireSortableTable("sns-media-table", snsSort, renderMediaTable);
-}
-
-// --- Instagram genre rollup ---
-// The genre stats are computed over a period window of the
-// fetched posts (all of them, or the last 30 / 7 days), chosen
-// with the period selector; the section header states the exact
-// dates the current window covers. Column headers sort the rows,
-// and the tiles / average bars follow the same rows.
-
-let snsDetail = null;
-let genreSort = { key: "totalViews", dir: "desc" };
-let genrePeriod = "all";
-let genreControlsWired = false;
-
-function updateGenreHeaders() {
-  document.querySelectorAll("#sns-genre-table th.sortable").forEach((th) => {
-    const active = th.dataset.sortKey === genreSort.key;
-    th.textContent =
-      th.dataset.label + (active ? (genreSort.dir === "desc" ? " ↓" : " ↑") : "");
-  });
-}
-
-function wireGenreControls() {
-  if (genreControlsWired) {
-    return;
-  }
-  genreControlsWired = true;
-  document.querySelectorAll("#sns-genre-table th.sortable").forEach((th) => {
-    th.dataset.label = th.textContent;
-    th.addEventListener("click", () => {
-      const key = th.dataset.sortKey;
-      if (genreSort.key === key) {
-        genreSort = { key, dir: genreSort.dir === "desc" ? "asc" : "desc" };
-      } else {
-        genreSort = { key, dir: "desc" };
-      }
-      renderGenreTable(snsDetail);
-    });
-  });
-  const select = document.getElementById("sns-genre-period");
-  select.addEventListener("change", () => {
-    genrePeriod = select.value;
-    renderGenreTable(snsDetail);
-  });
-}
-
-// Per-genre rollup of the posts in the selected period window:
-// one row per genre that has at least one post. The top post
-// links out to Instagram.
-function renderGenreTable(detail) {
-  const media = filterMediaByPeriod(snsMediaRows, genrePeriod);
-  const rows = sortGenreRows(
-    genreStatsForMedia(media),
-    genreSort.key,
-    genreSort.dir,
-  );
-  const rangeEl = document.getElementById("sns-genre-range");
-  const range = mediaDateRange(media);
-  rangeEl.textContent = "";
-  if (!media.length) {
-    rangeEl.textContent = "この期間の投稿はありません";
-  } else if (range) {
-    rangeEl.append(
-      `対象：${formatJstDate(range.from)}〜${formatJstDate(range.to)}の投稿（全`,
-      countSpan(media.length),
-      "件）",
-    );
-  }
-  renderGenreTreemap(
-    document.getElementById("sns-genre-treemap"),
-    document.getElementById("sns-genre-legend"),
-    genreTreemap(rows, (row) => ({
-      name: row.genre,
-      avg: row.avgViews,
-      avgText: `平均再生 ${formatCount(row.avgViews)}`,
-      totalText: `合計 ${formatCount(row.totalViews)}`,
-    })),
-  );
-  updateGenreHeaders();
-  const tbody = document.getElementById("sns-genre-body");
-  tbody.innerHTML = "";
-  if (!rows.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 7;
-    td.textContent = "データがありません";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    return;
-  }
-  const numCell = (text) => {
-    const td = document.createElement("td");
-    td.className = "num amount-value";
-    td.textContent = text;
-    return td;
-  };
-  // Rate cells （保存率・いいね率） are ratios: they stay
-  // readable while masking, so they take no .amount-value.
-  const rateCell = (text) => {
-    const td = document.createElement("td");
-    td.className = "num";
-    td.textContent = text;
-    return td;
-  };
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    const genreTd = document.createElement("td");
-    genreTd.className = "nowrap";
-    genreTd.textContent = row.genre;
-    tr.appendChild(genreTd);
-    tr.appendChild(numCell(formatCount(row.count)));
-    tr.appendChild(numCell(formatCount(row.totalViews)));
-    tr.appendChild(numCell(formatCount(row.avgViews)));
-    tr.appendChild(rateCell(formatRate(row.saveRate)));
-    tr.appendChild(rateCell(formatRate(row.likeRate)));
-    const topTd = document.createElement("td");
-    if (row.top) {
-      if (row.top.permalink) {
-        const link = document.createElement("a");
-        link.href = row.top.permalink;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = row.top.title;
-        topTd.appendChild(link);
-      } else {
-        topTd.textContent = row.top.title;
-      }
-      const span = document.createElement("span");
-      span.className = "rank-value amount-value";
-      span.textContent = formatCount(row.top.views);
-      topTd.appendChild(span);
-    } else {
-      topTd.textContent = "—";
-    }
-    tr.appendChild(topTd);
-    tbody.appendChild(tr);
-  }
-}
-
-let youtubeVideoRows = [];
-// The video table starts sorted by views, most-watched first,
-// like the Instagram tab's media table.
-let youtubeSort = { key: "views", dir: "desc", wired: false };
-
-function renderYoutube(detail) {
-  fillTotalBoxes(
-    "sns-youtube-totals",
-    youtubeTotals(detail, overviewState.historyRows),
-  );
-  youtubeVideoRows = youtubeVideos(detail);
-  wireSortableTable("sns-youtube-table", youtubeSort, renderYoutubeVideos);
-  renderYoutubeVideos();
-}
-
-// Per-video table of the YouTube tab, the counterpart of the
-// other tabs' per-post tables: one row per recent video, with
-// the shared header-click sorting. Until the snapshot lands the
-// table carries the load state instead of its empty state.
-function renderYoutubeVideos() {
-  const tbody = document.getElementById("sns-youtube-body");
-  tbody.innerHTML = "";
-  const youtubeRangeEl = document.getElementById("youtube-videos-range");
-  youtubeRangeEl.textContent = "";
-  if (youtubeVideoRows.length) {
-    youtubeRangeEl.append(
-      "対象：全ての動画（全",
-      countSpan(youtubeVideoRows.length),
-      "件）",
-    );
-  }
-  const videos = sortMedia(
-    youtubeVideoRows,
-    youtubeSort.key,
-    youtubeSort.dir,
-  );
-  if (!videos.length) {
-    // No snapshot behind this render yet (the loader's initial
-    // call, or its failure): the table carries the load state,
-    // not the empty-table line.
-    if (fillDetailPending(tbody)) {
-      return;
-    }
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 7;
-    td.textContent = "データがありません";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-    updateSortHeaders("sns-youtube-table", youtubeSort);
-    return;
-  }
-  for (const video of videos) {
-    const tr = document.createElement("tr");
-    tr.appendChild(
-      thumbnailCell({
-        candidates: youtubeThumbnailUrls(video),
-        shape: "horizontal",
-        autoShape: true,
-      }),
-    );
-    const titleTd = document.createElement("td");
-    if (video.url) {
-      const link = document.createElement("a");
-      link.href = video.url;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = video.title || "—";
-      titleTd.appendChild(link);
-    } else {
-      titleTd.textContent = video.title || "—";
-    }
-    if (isShortVideo(video)) {
-      const badge = document.createElement("span");
-      badge.className = "shorts-badge";
-      badge.textContent = "Shorts";
-      titleTd.appendChild(badge);
-    }
-    tr.appendChild(titleTd);
-    const dateTd = document.createElement("td");
-    dateTd.className = "nowrap";
-    dateTd.textContent = formatJstDateTime(video.published_at);
-    tr.appendChild(dateTd);
-    const durationTd = document.createElement("td");
-    durationTd.className = "num amount-value";
-    durationTd.textContent = formatClockDuration(video.duration_sec);
-    tr.appendChild(durationTd);
-    for (const value of [video.views, video.likes, video.comments]) {
-      const td = document.createElement("td");
-      td.className = "num amount-value";
-      td.textContent = formatCount(value);
-      tr.appendChild(td);
-    }
-    tbody.appendChild(tr);
-  }
-  updateSortHeaders("sns-youtube-table", youtubeSort);
+  const chart = document.createElement("div");
+  chart.className = "chart-wrap";
+  chart.innerHTML = buildLineChartSvg(item.points, { label: item.label });
+  wrap.appendChild(head);
+  wrap.appendChild(chart);
 }
 
 // The YouTube tab's subscriber trend, drawn from the same
@@ -2156,19 +1192,7 @@ function renderYoutubeHistory() {
     wrap.appendChild(p);
     return;
   }
-  const item = series[0];
-  const head = document.createElement("p");
-  head.className = "meta";
-  head.append(
-    `${item.label}：最新 `,
-    countSpan(item.latest, true),
-    `（${formatJstDateTime(item.firstAt)} 〜 ${formatJstDateTime(item.lastAt)}）`,
-  );
-  const chart = document.createElement("div");
-  chart.className = "chart-wrap";
-  chart.innerHTML = buildLineChartSvg(item.points, { label: item.label });
-  wrap.appendChild(head);
-  wrap.appendChild(chart);
+  appendTrendChart(wrap, series[0]);
 }
 
 // --- Threads tab ---
@@ -2182,255 +1206,6 @@ function renderYoutubeHistory() {
 // line. Threads history only starts on 2026-11-09, so for a
 // while the chart holds a handful of points (or just one).
 
-let threadsPostRows = [];
-// The posts table starts sorted by views, most-viewed first,
-// like the Instagram tab's media table.
-let threadsSort = { key: "views", dir: "desc", wired: false };
-// The per-post table's genre filter: null shows every post
-// (the すべて button). The classification is the shared one
-// (classifyCaption over the post text), so the buttons, the
-// genre section above and the filter always agree.
-let threadsGenreFilter = null;
-// The genre table's sort, mirroring the Instagram genre table.
-let threadsGenreSort = { key: "totalViews", dir: "desc" };
-
-// --- Post genre sections (Threads / X) ---
-// The same construction as the Instagram tab's ジャンル別 —
-// treemap (tile area = the genre's average views, heat colour
-// on the same average), legend, then the table (its 平均表示
-// column carries the average as a number) —
-// over the fetched posts, classified by the shared rules over
-// each post's text. Threads and X numbers are lifetime counts,
-// so there is no period selector; the section rebuilds on
-// every render (the blog genre section's pattern), which also
-// keeps the sort headers in step. Neither channel's posts
-// carry saves, so the table carries いいね率 but no 保存率.
-// The builder takes the channel's rollup rows and sort state;
-// each tab's own renderer is a thin wrapper over it, so the
-// two sections can never drift apart.
-
-const POST_GENRE_COLUMNS = [
-  { key: "genre", label: "ジャンル", numeric: false },
-  { key: "count", label: "投稿数", numeric: true },
-  { key: "totalViews", label: "表示合計", numeric: true },
-  { key: "avgViews", label: "平均表示", numeric: true },
-  { key: "likeRate", label: "いいね率", numeric: true },
-  { key: "top", label: "表示トップ", numeric: false },
-];
-
-function renderPostGenres(wrap, stats, sortState, rerender) {
-  wrap.innerHTML = "";
-  const rows = sortGenreRows(stats, sortState.key, sortState.dir);
-  if (!rows.length) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent = "—";
-    wrap.appendChild(p);
-    return;
-  }
-  wrap.appendChild(
-    buildGenreTreemap(
-      genreTreemap(rows, (row) => ({
-        name: row.genre,
-        avg: row.avgViews,
-        avgText: `平均表示 ${formatCount(row.avgViews)}`,
-        totalText: `合計 ${formatCount(row.totalViews)}`,
-      })),
-      "タイルの面積は平均表示回数の大きさです。色が青いほど平均表示回数が多いです。",
-    ),
-  );
-  const table = document.createElement("table");
-  table.className = "data-table";
-  const thead = document.createElement("thead");
-  const headRow = document.createElement("tr");
-  for (const column of POST_GENRE_COLUMNS) {
-    const th = document.createElement("th");
-    th.className = (column.numeric ? "num " : "") + "sortable";
-    const active = sortState.key === column.key;
-    th.textContent =
-      column.label +
-      (active ? (sortState.dir === "desc" ? " ↓" : " ↑") : "");
-    th.addEventListener("click", () => {
-      if (sortState.key === column.key) {
-        sortState.dir = sortState.dir === "desc" ? "asc" : "desc";
-      } else {
-        sortState.key = column.key;
-        sortState.dir = "desc";
-      }
-      rerender();
-    });
-    headRow.appendChild(th);
-  }
-  thead.appendChild(headRow);
-  table.appendChild(thead);
-  const tbody = document.createElement("tbody");
-  const numCell = (text) => {
-    const td = document.createElement("td");
-    td.className = "num amount-value";
-    td.textContent = text;
-    return td;
-  };
-  // The rate cell （いいね率） is a ratio: it stays readable
-  // while masking, so it takes no .amount-value.
-  const rateCell = (text) => {
-    const td = document.createElement("td");
-    td.className = "num";
-    td.textContent = text;
-    return td;
-  };
-  for (const row of rows) {
-    const tr = document.createElement("tr");
-    const genreTd = document.createElement("td");
-    genreTd.className = "nowrap";
-    genreTd.textContent = row.genre;
-    tr.appendChild(genreTd);
-    tr.appendChild(numCell(formatCount(row.count)));
-    tr.appendChild(numCell(formatCount(row.totalViews)));
-    tr.appendChild(numCell(formatCount(row.avgViews)));
-    tr.appendChild(rateCell(formatRate(row.likeRate)));
-    const topTd = document.createElement("td");
-    if (row.top) {
-      if (row.top.permalink) {
-        const link = document.createElement("a");
-        link.href = row.top.permalink;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = row.top.title;
-        topTd.appendChild(link);
-      } else {
-        topTd.textContent = row.top.title;
-      }
-      const span = document.createElement("span");
-      span.className = "rank-value amount-value";
-      span.textContent = formatCount(row.top.views);
-      topTd.appendChild(span);
-    } else {
-      topTd.textContent = "—";
-    }
-    tr.appendChild(topTd);
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-  const scroll = document.createElement("div");
-  scroll.className = "table-scroll";
-  scroll.appendChild(table);
-  wrap.appendChild(scroll);
-  const note = document.createElement("p");
-  note.className = "meta";
-  note.textContent =
-    "ジャンルは本文のキーワードで振り分けています（Instagram と同じルール）。いいね率は、投稿ごとの率（いいね÷表示）の平均です。";
-  wrap.appendChild(note);
-  const scope = document.createElement("p");
-  scope.className = "meta";
-  scope.textContent =
-    "集計は取得済みの投稿だけが対象です（すべての投稿ではありません）。";
-  wrap.appendChild(scope);
-}
-
-// The Threads tab's genre section: the shared builder over
-// the Threads rollup and the tab's own sort state.
-function renderThreadsGenres() {
-  renderPostGenres(
-    document.getElementById("threads-genres"),
-    genreStatsForThreads(threadsPostRows),
-    threadsGenreSort,
-    renderThreadsGenres,
-  );
-}
-
-// The buttons above the Threads per-post table, rendered with
-// the shared genre filter renderer like the other two tabs.
-// The counts come from the same rollup the genre section
-// shows, so a button's count is exactly the number of rows its
-// filter keeps.
-function renderThreadsPostsGenreTabs() {
-  renderGenreFilterTabs(document.getElementById("threads-posts-genre-tabs"), {
-    total: threadsPostRows.length,
-    options: threadsGenreOptions(threadsPostRows),
-    active: threadsGenreFilter,
-    onSelect: (genre) => {
-      threadsGenreFilter = genre;
-      renderThreadsPostsGenreTabs();
-      renderThreadsPosts();
-    },
-  });
-}
-
-// Per-post table of the Threads tab, the counterpart of the
-// Instagram tab's 投稿ごと: one row per recent post, the text
-// shortened and linked to the post itself, the shared genre
-// filter buttons above it and the shared header-click sorting.
-// Values that could not be collected show "—", and a partial
-// failure (posts_error) never hides the posts that did arrive.
-function renderThreadsPosts() {
-  const tbody = document.getElementById("threads-posts-body");
-  tbody.innerHTML = "";
-  const threadsRangeEl = document.getElementById("threads-posts-range");
-  threadsRangeEl.textContent = "";
-  if (threadsPostRows.length) {
-    threadsRangeEl.append(
-      "対象：直近の投稿（全",
-      countSpan(threadsPostRows.length),
-      "件）",
-    );
-  }
-  const rows = sortMedia(
-    filterThreadsByGenre(threadsPostRows, threadsGenreFilter),
-    threadsSort.key,
-    threadsSort.dir,
-  );
-  if (!rows.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 8;
-    td.textContent = "データがありません";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  } else {
-    const numCell = (value) => {
-      const td = document.createElement("td");
-      td.className = "num amount-value";
-      td.textContent = formatCount(value);
-      return td;
-    };
-    for (const post of rows) {
-      const tr = document.createElement("tr");
-      const dateTd = document.createElement("td");
-      dateTd.className = "nowrap";
-      dateTd.textContent = formatJstDateTime(post.posted_at);
-      tr.appendChild(dateTd);
-      const textTd = document.createElement("td");
-      textTd.className = "caption-cell";
-      const head = captionHead(post.text) || "投稿";
-      if (post.permalink) {
-        const link = document.createElement("a");
-        link.href = post.permalink;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = head;
-        textTd.appendChild(link);
-      } else {
-        textTd.textContent = head;
-      }
-      tr.appendChild(textTd);
-      // The genre the shared classifier assigns, shown per
-      // post like the Instagram table's genre column; the
-      // filter above and the rollup use the same judgement.
-      const genreTd = document.createElement("td");
-      genreTd.className = "nowrap";
-      genreTd.textContent = classifyCaption(post.text);
-      tr.appendChild(genreTd);
-      tr.appendChild(numCell(post.views));
-      tr.appendChild(numCell(post.likes));
-      tr.appendChild(numCell(post.replies));
-      tr.appendChild(numCell(post.reposts));
-      tr.appendChild(numCell(post.quotes));
-      tbody.appendChild(tr);
-    }
-  }
-  updateSortHeaders("threads-posts-table", threadsSort);
-}
-
 function renderThreads() {
   fillTotalBoxes(
     "sns-threads-totals",
@@ -2440,8 +1215,7 @@ function renderThreads() {
     "sns-threads-interactions",
     threadsInteractions(overviewState.detail),
   );
-  threadsPostRows = threadsPosts(overviewState.detail);
-  wireSortableTable("threads-posts-table", threadsSort, renderThreadsPosts);
+  threadsView.syncThreadsPosts(overviewState.detail);
   // Until the snapshot settles, the genre section and the
   // per-post table carry the load state instead of their empty
   // states (the totals boxes above show "—" under the tab's
@@ -2451,9 +1225,9 @@ function renderThreads() {
     document.getElementById("threads-posts-genre-tabs").innerHTML = "";
     document.getElementById("threads-posts-range").textContent = "";
   } else {
-    renderThreadsGenres();
-    renderThreadsPostsGenreTabs();
-    renderThreadsPosts();
+    threadsView.renderThreadsGenres();
+    threadsView.renderThreadsPostsGenreTabs();
+    threadsView.renderThreadsPosts();
   }
   const notes = document.getElementById("threads-notes");
   notes.innerHTML = "";
@@ -2476,19 +1250,7 @@ function renderThreads() {
     wrap.appendChild(p);
     return;
   }
-  const item = series[0];
-  const head = document.createElement("p");
-  head.className = "meta";
-  head.append(
-    `${item.label}：最新 `,
-    countSpan(item.latest, true),
-    `（${formatJstDateTime(item.firstAt)} 〜 ${formatJstDateTime(item.lastAt)}）`,
-  );
-  const chart = document.createElement("div");
-  chart.className = "chart-wrap";
-  chart.innerHTML = buildLineChartSvg(item.points, { label: item.label });
-  wrap.appendChild(head);
-  wrap.appendChild(chart);
+  appendTrendChart(wrap, series[0]);
 }
 
 // --- X tab ---
@@ -2547,184 +1309,6 @@ function renderXPostsGenreTabs() {
   });
 }
 
-// One reaction actor as display text: the name with the
-// handle in parentheses, falling back to whichever half the
-// stored fact carries.
-function xActorText(fact) {
-  const name = (fact && fact.actor_name) || "";
-  const username = (fact && fact.actor_username) || "";
-  if (name && username) {
-    return `${name}（@${username}）`;
-  }
-  if (username) {
-    return `@${username}`;
-  }
-  return name || "（名前なし）";
-}
-
-// The expanded reaction detail under one post row: who liked
-// and reposted it (name lists linked to their profiles), and
-// the replies and quotes with their bodies (linked to the
-// reaction post itself). The closing note states the data's
-// limits where the reader meets them: the facts come from the
-// notify window the hourly collection reads, so they cover
-// only what arrived after the collection started, and an
-// aggregated like notification does not name everyone.
-function buildXReactionDetail(facts) {
-  const groups = xReactionGroups(facts);
-  const wrap = document.createElement("div");
-  wrap.className = "reaction-detail";
-  const nameList = (label, list) => {
-    if (!list.length) {
-      return;
-    }
-    const p = document.createElement("p");
-    p.append(`${label}：`);
-    list.forEach((fact, index) => {
-      if (index) {
-        p.append("、");
-      }
-      const username = fact.actor_username || "";
-      if (username) {
-        const link = document.createElement("a");
-        link.href = `https://x.com/${username}`;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = xActorText(fact);
-        p.appendChild(link);
-      } else {
-        p.append(xActorText(fact));
-      }
-    });
-    wrap.appendChild(p);
-  };
-  nameList("いいね", groups.like);
-  nameList("リポスト", groups.retweet);
-  const bodyList = (label, list) => {
-    if (!list.length) {
-      return;
-    }
-    const head = document.createElement("p");
-    head.textContent = `${label}：`;
-    wrap.appendChild(head);
-    for (const fact of list) {
-      const item = document.createElement("div");
-      item.className = "reaction-item";
-      const meta = document.createElement("p");
-      meta.className = "meta";
-      const when = fact.acted_at || fact.collected_at;
-      const actorLabel = when
-        ? `${xActorText(fact)}（${formatJstDateTime(when)}）`
-        : xActorText(fact);
-      if (fact.reaction_tweet_id) {
-        const link = document.createElement("a");
-        link.href = `https://x.com/i/web/status/${fact.reaction_tweet_id}`;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = actorLabel;
-        meta.appendChild(link);
-      } else {
-        meta.textContent = actorLabel;
-      }
-      const body = document.createElement("p");
-      body.className = "reaction-body";
-      body.textContent = fact.text || "";
-      item.append(meta, body);
-      wrap.appendChild(item);
-    }
-  };
-  bodyList("返信", groups.reply);
-  bodyList("引用", groups.quote);
-  const note = document.createElement("p");
-  note.className = "meta";
-  note.textContent =
-    "通知から取り込めた反応だけを表示しています（取り込み開始以降に届いた分）。いいねは集約された通知で届くため、全員分が載らないことがあります。";
-  wrap.appendChild(note);
-  return wrap;
-}
-
-// The newest follows the notify collection stored, as one
-// compact line above the per-post table: a follow is an
-// account-level fact, so it belongs to no post's detail.
-// Nothing renders while none are stored.
-function renderXRecentFollows() {
-  const wrap = document.getElementById("x-recent-follows");
-  if (!wrap) {
-    return;
-  }
-  wrap.innerHTML = "";
-  const follows = xRecentFollows(overviewState.detail);
-  if (!follows.length) {
-    return;
-  }
-  const p = document.createElement("p");
-  p.className = "meta";
-  p.append("最近のフォロー：");
-  follows.forEach((fact, index) => {
-    if (index) {
-      p.append("、");
-    }
-    p.append(xActorText(fact));
-  });
-  wrap.appendChild(p);
-}
-
-// Replies and quotes the notify collection stored but no
-// notify data can attribute to a post: the feed names the
-// reaction itself, never the post it answers. They render as
-// their own reading list under the per-post table — kind,
-// actor, moment and body, linked to the reaction post —
-// instead of being dropped or guessed onto a post. Nothing
-// renders while none are stored.
-function renderXUnattributed() {
-  const wrap = document.getElementById("x-unattributed");
-  if (!wrap) {
-    return;
-  }
-  wrap.innerHTML = "";
-  wrap.className = "";
-  const list = xUnattributedReactions(overviewState.detail);
-  if (!list.length) {
-    return;
-  }
-  wrap.className = "reaction-detail";
-  const title = document.createElement("h3");
-  title.className = "subsection-title";
-  title.textContent = "返信・引用（対象の投稿を特定できないもの）";
-  wrap.appendChild(title);
-  const note = document.createElement("p");
-  note.className = "meta";
-  note.textContent =
-    "返信・引用は、通知のデータに対象の投稿が含まれないため、投稿ごとの詳細には付けられませんでした。";
-  wrap.appendChild(note);
-  for (const fact of list) {
-    const item = document.createElement("div");
-    item.className = "reaction-item";
-    const meta = document.createElement("p");
-    meta.className = "meta";
-    const kindLabel = fact.kind === "quote" ? "引用" : "返信";
-    const when = fact.acted_at || fact.collected_at;
-    const label = when
-      ? `${kindLabel}：${xActorText(fact)}（${formatJstDateTime(when)}）`
-      : `${kindLabel}：${xActorText(fact)}`;
-    if (fact.reaction_tweet_id) {
-      const link = document.createElement("a");
-      link.href = `https://x.com/i/web/status/${fact.reaction_tweet_id}`;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.textContent = label;
-      meta.appendChild(link);
-    } else {
-      meta.textContent = label;
-    }
-    const body = document.createElement("p");
-    body.className = "reaction-body";
-    body.textContent = fact.text || "";
-    item.append(meta, body);
-    wrap.appendChild(item);
-  }
-}
-
 function renderXPosts() {
   const tbody = document.getElementById("x-posts-body");
   tbody.innerHTML = "";
@@ -2750,12 +1334,6 @@ function renderXPosts() {
     tr.appendChild(td);
     tbody.appendChild(tr);
   } else {
-    const numCell = (value) => {
-      const td = document.createElement("td");
-      td.className = "num amount-value";
-      td.textContent = formatCount(value);
-      return td;
-    };
     const reactionsByPost = xReactions(overviewState.detail);
     for (const post of rows) {
       const tr = document.createElement("tr");
@@ -2828,74 +1406,6 @@ function renderXPosts() {
     }
   }
   updateSortHeaders("x-posts-table", xSort);
-}
-
-// The X API credit card, under the totals row: the current
-// credit balance (USD) collected through tweet-gas, the runway
-// estimate derived from the stored balance series, and the
-// link to the X Developer Portal where the balance is managed.
-// The balance and the runway are this page's private figures —
-// never published — so both carry .amount-value without
-// .is-public and mask like the other private amounts; the
-// portal link itself is not a figure and stays visible. Until
-// tweet-gas reports a balance the card shows the dash and a
-// note that collection runs through tweet-gas, so the portal
-// link is already in place.
-function renderXApiCredit() {
-  const wrap = document.getElementById("x-api-credit");
-  if (!wrap) {
-    return;
-  }
-  wrap.innerHTML = "";
-  const summary = xApiCreditSummary(
-    overviewState.detail,
-    overviewState.historyRows,
-  );
-  const box = document.createElement("div");
-  box.className = "total-box";
-  const label = document.createElement("div");
-  label.className = "total-label";
-  label.textContent = "X APIクレジット残高";
-  const value = document.createElement("div");
-  value.className = "total-value amount-value";
-  value.textContent = summary.balanceText;
-  box.appendChild(label);
-  box.appendChild(value);
-  if (summary.runwayText) {
-    const runway = document.createElement("div");
-    runway.className = "kpi-delta amount-value";
-    runway.textContent = summary.runwayText;
-    box.appendChild(runway);
-    // How the estimate was made, in plain words: it projects
-    // the balance's own recorded decrease, not a unit-price
-    // conversion of the post count.
-    const method = document.createElement("div");
-    method.className = "meta";
-    method.textContent = "目安は履歴に残った残高の減り方からの試算です";
-    box.appendChild(method);
-  }
-  if (summary.paceText) {
-    const pace = document.createElement("div");
-    pace.className = "meta amount-value";
-    pace.textContent = summary.paceText;
-    box.appendChild(pace);
-  }
-  if (summary.balance === null) {
-    const note = document.createElement("div");
-    note.className = "meta";
-    note.textContent = "残高は tweet-gas 経由で収集中です";
-    box.appendChild(note);
-  }
-  const linkLine = document.createElement("div");
-  linkLine.className = "meta";
-  const link = document.createElement("a");
-  link.href = "https://developer.x.com";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = "X Developer Portal";
-  linkLine.appendChild(link);
-  box.appendChild(linkLine);
-  wrap.appendChild(box);
 }
 
 // Tick labels for the daily spend chart: dollars with the
@@ -3004,252 +1514,7 @@ function renderX() {
     wrap.appendChild(p);
     return;
   }
-  const item = series[0];
-  const head = document.createElement("p");
-  head.className = "meta";
-  head.append(
-    `${item.label}：最新 `,
-    countSpan(item.latest, true),
-    `（${formatJstDateTime(item.firstAt)} 〜 ${formatJstDateTime(item.lastAt)}）`,
-  );
-  const chart = document.createElement("div");
-  chart.className = "chart-wrap";
-  chart.innerHTML = buildLineChartSvg(item.points, { label: item.label });
-  wrap.appendChild(head);
-  wrap.appendChild(chart);
-}
-
-// --- Instagram daily follows (フォロー・フォロー解除（日ごと）) ---
-// Daily follow / unfollow bars with the day's posts mapped onto
-// them. Meta only reports follows as an account-wide daily
-// number, so the overlay is by calendar day: it shows what was
-// posted on the days follows moved, never that a post caused the
-// move — the note under the chart says exactly that. The series
-// arrives with sns_detail (instagram.daily_follows); until
-// social-gas collects it, the section shows its empty state.
-//
-// Tapping a posted day's column in the chart (the ▼ marker or
-// anywhere on the column — buildFollowChartSvg gives those days
-// a full-column hit rect) scrolls to that day's entry in the
-// list below and highlights both the entry and the column until
-// another day is picked.
-
-function jumpToFollowDay(wrap, date) {
-  for (const el of wrap.querySelectorAll(".follow-day-hit.selected")) {
-    el.classList.remove("selected");
-  }
-  for (const el of wrap.querySelectorAll(".follow-day-entry.highlight")) {
-    el.classList.remove("highlight");
-  }
-  const hit = wrap.querySelector(`.follow-day-hit[data-date="${date}"]`);
-  if (hit) {
-    hit.classList.add("selected");
-  }
-  const entry = wrap.querySelector(`.follow-day-entry[data-date="${date}"]`);
-  if (entry) {
-    entry.classList.add("highlight");
-    entry.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-}
-
-function renderFollowChart(detail) {
-  const wrap = document.getElementById("sns-follow-chart");
-  wrap.innerHTML = "";
-  const days = followChartDays(detail);
-  if (!days.length) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent = "データがありません";
-    wrap.appendChild(p);
-  } else {
-    const chart = document.createElement("div");
-    chart.className = "chart-wrap";
-    chart.innerHTML = buildFollowChartSvg(days);
-    chart.addEventListener("click", (event) => {
-      const hit = event.target.closest?.("[data-date]");
-      if (hit) {
-        jumpToFollowDay(wrap, hit.dataset.date);
-      }
-    });
-    wrap.appendChild(chart);
-    const legend = document.createElement("p");
-    legend.className = "meta";
-    legend.textContent =
-      "青い棒がフォロー、赤い棒がフォロー解除です。▼は投稿があった日です。▼や棒を押すと、その日の投稿に飛びます。";
-    wrap.appendChild(legend);
-    const postedDays = days.filter((day) => day.posts.length);
-    if (postedDays.length) {
-      const head = document.createElement("h4");
-      head.className = "demo-list-title";
-      head.textContent = "投稿があった日";
-      wrap.appendChild(head);
-      for (const day of [...postedDays].reverse()) {
-        const entry = document.createElement("div");
-        entry.className = "follow-day-entry";
-        entry.dataset.date = day.date;
-        const dayLine = document.createElement("p");
-        dayLine.className = "meta";
-        dayLine.append(`${formatDateLabel(day.date)}：フォロー `);
-        const followsCount = document.createElement("span");
-        followsCount.className = "follow-count-up amount-value";
-        followsCount.textContent = formatCount(day.follows);
-        dayLine.append(followsCount, " · フォロー解除 ");
-        const unfollowsCount = document.createElement("span");
-        unfollowsCount.className = "follow-count-down amount-value";
-        unfollowsCount.textContent = formatCount(day.unfollows);
-        dayLine.append(unfollowsCount);
-        entry.appendChild(dayLine);
-        const list = document.createElement("ul");
-        list.className = "ranking";
-        for (const media of day.posts) {
-          const li = document.createElement("li");
-          const label =
-            captionHead(media.caption) || mediaTypeLabel(media.type) || "投稿";
-          if (media.permalink) {
-            const link = document.createElement("a");
-            link.href = media.permalink;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.textContent = label;
-            li.appendChild(link);
-          } else {
-            li.textContent = label;
-          }
-          const span = document.createElement("span");
-          span.className = "rank-value amount-value";
-          span.textContent = formatCount(media.views);
-          li.appendChild(span);
-          list.appendChild(li);
-        }
-        entry.appendChild(list);
-        wrap.appendChild(entry);
-      }
-    }
-    const note = document.createElement("p");
-    note.className = "meta";
-    note.textContent =
-      "フォロー数はアカウント全体の数字です。投稿との対応は日付による重ね合わせで、どの投稿がきっかけかまでは分かりません。";
-    wrap.appendChild(note);
-  }
-  const error = instagramDailyFollowsError(detail);
-  if (error) {
-    const p = document.createElement("p");
-    p.className = "meta sns-note";
-    p.textContent = `※ ${error}`;
-    wrap.appendChild(p);
-  }
-}
-
-// --- Instagram engagement trend （推移） ---
-// The last-30-days account metrics (views, reach, the
-// interaction total and its breakdown) as daily line charts,
-// one metric at a time behind the chips, over a period the
-// second chip row picks (30日 / 90日 / 180日 / 全期間, 90日
-// by default). The series come from the history rows, so —
-// like the YouTube trend — renderSns and loadSnsHistory both
-// call this, and whichever load lands second completes the
-// section. The metrics are Meta's rolling 30-day totals, so
-// the points are the days' latest values plotted as-is. The
-// chart carries a y axis whose domain follows the data (a
-// zero baseline would flatten these large totals' movement);
-// its tick labels are raw counts, so — like the latest value
-// here — they hide under masking through the shared CSS.
-// Only days the history actually holds are plotted: a period
-// longer than the history shows the days there are.
-
-let instagramTrendKey = "views_30d";
-let instagramTrendDays = INSTAGRAM_TREND_DEFAULT_DAYS;
-
-function renderInstagramTrend() {
-  const wrap = document.getElementById("instagram-trend");
-  // Until the history load settles, the wrap carries its load
-  // state rather than the "no history yet" line.
-  if (fillHistoryPending(wrap)) {
-    return;
-  }
-  wrap.innerHTML = "";
-  const series = instagramTrendSeries(
-    overviewState.historyRows,
-    instagramTrendDays,
-  );
-  if (!series.length) {
-    const p = document.createElement("p");
-    p.className = "meta";
-    p.textContent = "履歴はまだありません（取得のたびに貯まっていきます）";
-    wrap.appendChild(p);
-    return;
-  }
-  const item =
-    series.find((entry) => entry.key === instagramTrendKey) ?? series[0];
-  instagramTrendKey = item.key;
-  const chips = document.createElement("div");
-  chips.className = "tabs genre-filter";
-  chips.setAttribute("role", "tablist");
-  chips.setAttribute("aria-label", "推移の指標");
-  for (const entry of series) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tab-button genre-filter-button";
-    const isActive = entry.key === instagramTrendKey;
-    btn.classList.toggle("active", isActive);
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", String(isActive));
-    btn.textContent = entry.label;
-    btn.addEventListener("click", () => {
-      instagramTrendKey = entry.key;
-      renderInstagramTrend();
-    });
-    chips.appendChild(btn);
-  }
-  wrap.appendChild(chips);
-  const periodChips = document.createElement("div");
-  periodChips.className = "tabs genre-filter";
-  periodChips.setAttribute("role", "tablist");
-  periodChips.setAttribute("aria-label", "推移の期間");
-  for (const period of INSTAGRAM_TREND_PERIODS) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tab-button genre-filter-button";
-    const isActive = period.days === instagramTrendDays;
-    btn.classList.toggle("active", isActive);
-    btn.setAttribute("role", "tab");
-    btn.setAttribute("aria-selected", String(isActive));
-    btn.textContent = period.label;
-    btn.addEventListener("click", () => {
-      instagramTrendDays = period.days;
-      renderInstagramTrend();
-    });
-    periodChips.appendChild(btn);
-  }
-  wrap.appendChild(periodChips);
-  const head = document.createElement("p");
-  head.className = "meta";
-  head.append(
-    `${item.label}（過去30日）：最新 `,
-    countSpan(item.latest),
-    `（${formatJstDateTime(item.firstAt)} 〜 ${formatJstDateTime(item.lastAt)}）`,
-  );
-  const chart = document.createElement("div");
-  chart.className = "chart-wrap";
-  chart.innerHTML = buildLineChartSvg(item.points, {
-    label: item.label,
-    yAxis: true,
-  });
-  wrap.appendChild(head);
-  wrap.appendChild(chart);
-}
-
-// The Instagram tab's KPI row. The フォロー / フォロー解除
-// cards carry a 前日比 taken from the history rows, so the row
-// renders from the shared state and loadSnsHistory re-renders
-// it when the history lands, like the other channel tabs'
-// totals: whichever of the snapshot and the history arrives
-// second completes the row.
-function renderInstagramTotals() {
-  fillTotalBoxes(
-    "sns-overview",
-    snsOverview(overviewState.detail, overviewState.historyRows),
-  );
+  appendTrendChart(wrap, series[0]);
 }
 
 function renderSns(detail) {
@@ -3272,8 +1537,8 @@ function renderSns(detail) {
   document.getElementById("x-status").textContent = detail.collected_at
     ? `取得時刻: ${formatJstDateTime(detail.collected_at)}`
     : "";
-  renderInstagramTotals();
-  renderInstagramTrend();
+  instagramView.renderInstagramTotals();
+  instagramView.renderInstagramTrend();
   fillTotalBoxes("sns-interactions", snsInteractions(detail));
   const bars = document.getElementById("sns-age-gender");
   bars.innerHTML = "";
@@ -3352,29 +1617,9 @@ function renderSns(detail) {
   const demo = detail?.instagram?.demographics ?? {};
   fillDemoRanking("sns-cities", topDemographics(demo.top_cities));
   fillDemoRanking("sns-countries", topDemographics(demo.top_countries));
-  renderFollowChart(detail);
-  snsMediaRows = Array.isArray(detail?.instagram?.recent_media)
-    ? detail.instagram.recent_media.map(withWatchRate)
-    : [];
-  snsDetail = detail;
-  const mediaRange = mediaDateRange(snsMediaRows);
-  const mediaRangeEl = document.getElementById("sns-media-range");
-  mediaRangeEl.textContent = "";
-  if (mediaRange) {
-    mediaRangeEl.append(
-      `対象：${formatJstDate(mediaRange.from)}〜${formatJstDate(mediaRange.to)}の投稿（全`,
-      countSpan(snsMediaRows.length),
-      "件）",
-    );
-  }
-  // A fresh snapshot resets the per-post genre filter to すべて.
-  snsGenreFilter = null;
-  renderMediaGenreTabs();
-  wireMediaSort();
-  renderMediaTable();
-  wireGenreControls();
-  renderGenreTable(detail);
-  renderYoutube(detail);
+  instagramView.renderFollowChart(detail);
+  instagramView.renderSnsMedia(detail);
+  youtubeView.renderYoutube(detail);
   renderYoutubeHistory();
   renderThreads();
   renderX();
@@ -3398,7 +1643,7 @@ async function loadSns(detailPromise) {
   threadsStatusEl.textContent = "読み込み中…";
   const xStatusEl = document.getElementById("x-status");
   xStatusEl.textContent = "読み込み中…";
-  renderYoutube(null);
+  youtubeView.renderYoutube(null);
   renderThreads();
   renderX();
   try {
@@ -3431,7 +1676,7 @@ function settleSnsFailed() {
   overviewState.detailSettled = true;
   overviewState.detailFailed = true;
   renderOverview();
-  renderYoutube(null);
+  youtubeView.renderYoutube(null);
   renderThreads();
   renderX();
 }
@@ -3507,9 +1752,9 @@ async function loadSnsHistory(historyPromise) {
   overviewState.historyFailed = failed;
   setSectionFailed(historyEl);
   renderOverview();
-  renderYoutube(overviewState.detail);
-  renderInstagramTotals();
-  renderInstagramTrend();
+  youtubeView.renderYoutube(overviewState.detail);
+  instagramView.renderInstagramTotals();
+  instagramView.renderInstagramTrend();
   renderYoutubeHistory();
   renderThreads();
   renderX();
@@ -3530,9 +1775,9 @@ function applySnsHistory(response) {
   // The YouTube totals now read the history too (the subscriber
   // change card), so they re-render with the other channel tabs
   // when the history settles.
-  renderYoutube(overviewState.detail);
-  renderInstagramTotals();
-  renderInstagramTrend();
+  youtubeView.renderYoutube(overviewState.detail);
+  instagramView.renderInstagramTotals();
+  instagramView.renderInstagramTrend();
   renderYoutubeHistory();
   renderThreads();
   renderX();
@@ -3572,18 +1817,9 @@ async function refreshSnsData() {
     detail = null;
   }
   if (detail && detail.ok) {
-    const keepGenreFilter = snsGenreFilter;
+    const keepGenreFilter = instagramView.mediaGenreFilter();
     renderSns(detail);
-    if (
-      keepGenreFilter !== null &&
-      mediaGenreOptions(snsMediaRows).some(
-        (option) => option.genre === keepGenreFilter,
-      )
-    ) {
-      snsGenreFilter = keepGenreFilter;
-      renderMediaGenreTabs();
-      renderMediaTable();
-    }
+    instagramView.restoreMediaGenreFilter(keepGenreFilter);
   }
   let history = null;
   try {
