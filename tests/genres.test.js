@@ -425,6 +425,50 @@ describe("classifyXText", () => {
     ).toBe("QA・テスト");
   });
 
+  it("buckets the posts the owner corrected on 2026-11-24", () => {
+    // QA・テスト: named testing techniques, the prevention
+    // framing of the failure retrospective, and the QA talk's
+    // own words — all four had fallen into 日常・その他.
+    expect(
+      classifyXText(
+        "自作ツール38か所に異常系テストとプロパティベーステストを当てたら、不具合がたくさん見つかりました。並べると6つの「型」に集約できたのと、2つの手法の役割分担が見えた話を書きました。",
+      ),
+    ).toBe("QA・テスト");
+    expect(
+      classifyXText(
+        "ホームページとブログを多言語化したら、障害が9件出ました。テストで防ぐ、設計で防ぐ、監視で防ぐ。この3つの役割分担で整理し直した話を書きました。",
+      ),
+    ).toBe("QA・テスト");
+    expect(
+      classifyXText("AIによる自律的なテストって？/おっさんQAトーク 第6回"),
+    ).toBe("QA・テスト");
+    expect(classifyXText("ZERO TEST パワーワードですね")).toBe("QA・テスト");
+    // 技術・AI: the OSS contribution, the mojibake incident,
+    // the AI-accuracy reply, and the Hooks post — the last is
+    // tech, not QA: the 自動検証 is the article's mechanism,
+    // not the post's subject.
+    expect(
+      classifyXText(
+        "アプリを作る側ではない私が、オープンソースにプルリクエストを送ってみた話を書きました。欲しい機能が無かったので作って送ったら、取り込んでもらえました。",
+      ),
+    ).toBe("技術・AI");
+    expect(
+      classifyXText(
+        "ブログのリンクカードがまとめて文字化けした日の顛末を書きました。原因は文字コードの読み違い。",
+      ),
+    ).toBe("技術・AI");
+    expect(
+      classifyXText(
+        "完全に同意です！いろんなやり方インプットがあるとaccuracy がとたんに落ちますからね、。",
+      ),
+    ).toBe("技術・AI");
+    expect(
+      classifyXText(
+        "引用ありがとうございます。記事の中のチェックゲートは、Hooksによる自動検証が中心で、フェーズを途中で止めずに回す設計でした。",
+      ),
+    ).toBe("技術・AI");
+  });
+
   it("judges a blog update by its subject: a tech article is 技術・AI", () => {
     expect(
       classifyXText(
