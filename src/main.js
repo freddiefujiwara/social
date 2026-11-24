@@ -27,6 +27,9 @@ import {
   SNS_DETAIL_PLATFORMS,
   mergeSnsDetail,
   fetchSnsHistory,
+  fetchBootstrap,
+  isBootstrapResponse,
+  isAuthFailureResponse,
   dataAsOfText,
   snsHistoryRows,
   snsHistorySeries,
@@ -350,24 +353,58 @@ function showExpired() {
   renderPrivacy();
 }
 
-async function loadDashboard() {
-  // The session kind is settled by the time the dashboard loads:
-  // restate the privacy masking for it (a share session suspends
-  // masking and hides the toggle).
-  renderPrivacy();
-  // Every request the dashboard needs is independent — a different
-  // action or report shape off the same bridge — so they all
-  // start here, in parallel, instead of queueing behind each
-  // other. What a section waits for is only its own data: the
-  // dashboard itself is revealed as soon as the GA totals land
-  // (that response doubles as the auth verdict), and the other
-  // sections fill in as their own responses arrive.
-  // Article titles come from the blog RSS feed; fetched in parallel
-  // and never allowed to block (or break) the numbers.
-  const titlesPromise = fetchArticleTitles(CONFIG.BLOG_RSS_URL);
-  // The article tag map comes from the blog API's titles payload;
-  // same treatment: parallel, tolerant, display-only.
-  const metaPromise = fetchBlogMeta(CONFIG.BLOG_TITLES_URL);
+// The dashboard's bridge load: the totals payload (awaited —
+// it doubles as the auth verdict) plus the other seven
+// sections as promises in exactly the shapes the loaders
+// consume, so loadDashboard cannot tell past this point
+// whether the sections rode one request or eight.
+//
+// The one request is action=bootstrap: the bridge answers with
+// every section at once, each exactly what its own request
+// returns (see fetchBootstrap in api.js). Its sections land as
+// already-settled promises with their per-section ok flags
+// intact, so a section that failed renders its failure exactly
+// as a failed fetch does today. Two outcomes are NOT an
+// unavailable bootstrap and never fall back:
+//   - an auth failure ({ ok: false, status: 401 | 403, error })
+//     is the verdict itself, handed back as the totals so
+//     loadDashboard lands on the same expired/gate outcome the
+//     totals request produces today — the individual requests
+//     would only fail the same way, eight times over;
+//   - a totals section that arrived but is not ok is likewise
+//     the verdict (the gate shows its error), with no sections
+//     to hand out.
+// Anything else — a bridge too old for the action (it answers
+// with a plain report payload, which the shape check rejects),
+// a network failure, a malformed body — falls back to the
+// eight individual requests, fired in parallel exactly as
+// before bootstrap existed.
+async function fetchDashboardLoad() {
+  let boot = null;
+  try {
+    boot = await fetchBootstrap(CONFIG.GAS_ENDPOINT, auth());
+  } catch {
+    boot = null;
+  }
+  if (isAuthFailureResponse(boot)) {
+    return { totals: boot };
+  }
+  if (isBootstrapResponse(boot)) {
+    if (!boot.totals.ok) {
+      return { totals: boot.totals };
+    }
+    const settled = (section) => Promise.resolve(section);
+    return {
+      totals: boot.totals,
+      dailyPromise: settled(boot.daily),
+      pagesPromise: settled(boot.pages),
+      sourcesPromise: settled(boot.sources),
+      speedPromise: settled(boot.speed),
+      scrollPromise: settled(boot.scroll),
+      detailPromise: settled(boot.detail),
+      historyPromise: settled(boot.history),
+    };
+  }
   const totalsPromise = fetchReport(CONFIG.GAS_ENDPOINT, auth(), {
     dimensions: "",
   });
@@ -415,8 +452,8 @@ async function loadDashboard() {
   });
   // The SNS snapshot and history start now too, alongside the GA
   // reports; their loaders are only invoked once the totals check
-  // below has passed, so a dead session never renders into a
-  // dashboard that stays hidden. The no-op catches keep a
+  // in loadDashboard has passed, so a dead session never renders
+  // into a dashboard that stays hidden. The no-op catches keep a
   // rejection from surfacing as unhandled when that check fails
   // first and the loaders never run; a loader's own catch still
   // sees the rejection when it does run.
@@ -432,6 +469,30 @@ async function loadDashboard() {
   detailPromise.catch(() => {});
   const historyPromise = fetchSnsHistory(CONFIG.GAS_ENDPOINT, auth());
   historyPromise.catch(() => {});
+  const totals = await totalsPromise;
+  return {
+    totals,
+    dailyPromise,
+    pagesPromise,
+    sourcesPromise,
+    speedPromise,
+    scrollPromise,
+    detailPromise,
+    historyPromise,
+  };
+}
+
+async function loadDashboard() {
+  // The session kind is settled by the time the dashboard loads:
+  // restate the privacy masking for it (a share session suspends
+  // masking and hides the toggle).
+  renderPrivacy();
+  // Article titles come from the blog RSS feed; fetched in parallel
+  // and never allowed to block (or break) the numbers.
+  const titlesPromise = fetchArticleTitles(CONFIG.BLOG_RSS_URL);
+  // The article tag map comes from the blog API's titles payload;
+  // same treatment: parallel, tolerant, display-only.
+  const metaPromise = fetchBlogMeta(CONFIG.BLOG_TITLES_URL);
   // The blog's translation status rides along too: public
   // blog-gas metadata like the RSS feed and the titles payload,
   // so no auth travels with it, and it settles on its own line
@@ -442,7 +503,15 @@ async function loadDashboard() {
     CONFIG.BLOG_TRANSLATION_STATUS_URL,
   );
   translationPromise.catch(() => {});
-  const totals = await totalsPromise;
+  // The bridge sections (the GA reports, the SNS snapshot, the
+  // SNS history) ride the bootstrap request when the bridge
+  // offers it, the eight individual requests otherwise. What a
+  // section waits for is only its own data either way: the
+  // dashboard itself is revealed as soon as the GA totals land
+  // (that payload doubles as the auth verdict), and the other
+  // sections fill in as their own responses arrive.
+  const load = await fetchDashboardLoad();
+  const totals = load.totals;
   if (!totals.ok) {
     if (shareToken) {
       showExpired();
@@ -476,16 +545,16 @@ async function loadDashboard() {
   renderPrivacy();
   // The SNS section loads on its own: a failure there must not take
   // the GA dashboard down with it.
-  loadSns(detailPromise);
-  loadSnsHistory(historyPromise);
+  loadSns(load.detailPromise);
+  loadSnsHistory(load.historyPromise);
   loadBlogSections(
-    dailyPromise,
-    pagesPromise,
-    sourcesPromise,
+    load.dailyPromise,
+    load.pagesPromise,
+    load.sourcesPromise,
     titlesPromise,
     metaPromise,
-    speedPromise,
-    scrollPromise,
+    load.speedPromise,
+    load.scrollPromise,
     translationPromise,
   );
   // The dashboard is up: keep its SNS data current while the
