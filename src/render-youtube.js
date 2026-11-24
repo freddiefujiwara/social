@@ -21,7 +21,11 @@ import {
   updateSortHeaders,
 } from "./render-common.js";
 
-export function createYoutubeRenderer({ fillTotalBoxes, fillDetailPending }) {
+export function createYoutubeRenderer({
+  fillTotalBoxes,
+  fillDetailPending,
+  fillScopePending,
+}) {
   let youtubeVideoRows = [];
   // The video table starts sorted by views, most-watched first,
   // like the Instagram tab's media table.
@@ -32,7 +36,13 @@ export function createYoutubeRenderer({ fillTotalBoxes, fillDetailPending }) {
       "sns-youtube-totals",
       youtubeTotals(detail, overviewState.historyRows),
     );
-    youtubeVideoRows = youtubeVideos(detail);
+    // The video rows wait for the channel's full section: until
+    // it lands the detail holds only the overview's trimmed
+    // preview (top 3, without the dates and counts the table
+    // renders), which must not pose as the full list.
+    youtubeVideoRows = overviewState.detailScopes.youtube
+      ? youtubeVideos(detail)
+      : [];
     wireSortableTable("sns-youtube-table", youtubeSort, renderYoutubeVideos);
     renderYoutubeVideos();
   }
@@ -61,8 +71,12 @@ export function createYoutubeRenderer({ fillTotalBoxes, fillDetailPending }) {
     if (!videos.length) {
       // No snapshot behind this render yet (the loader's initial
       // call, or its failure): the table carries the load state,
-      // not the empty-table line.
+      // not the empty-table line. The same while the channel's
+      // full section is still on its way (the scope state).
       if (fillDetailPending(tbody)) {
+        return;
+      }
+      if (fillScopePending(tbody)) {
         return;
       }
       const tr = document.createElement("tr");
