@@ -551,6 +551,19 @@ export function filterThreadsByGenre(posts, genre) {
 //   and is 技術・AI. The QA rule uses the testing phrases that
 //   mark a post as being ABOUT testing (テストの, テスト会社,
 //   手動テスト, …).
+//
+// Second tuning round (2026-11-24): the owner hand-corrected
+// eight recent posts that had all landed in 日常・その他. The
+// additions follow the same phrase-form discipline — named
+// techniques (異常系テスト, プロパティベーステスト), the
+// talk's own words (QAトーク, ZERO TEST), and the prevention
+// framing of the failure-retrospective article (テストで防ぐ)
+// for QA・テスト; the concrete tech nouns of the missed posts
+// (プルリクエスト, オープンソース, 文字コード, Hooks,
+// accuracy) for 技術・AI. One judgement call to note: the
+// Hooks post is 技術・AI, not QA・テスト — its 自動検証 is a
+// mechanism the article describes, not the post's subject, so
+// 自動検証 stays out of the QA keywords.
 // A post that is only a URL, or a word or two, matches nothing
 // and stays 日常・その他 — there is nothing to classify.
 
@@ -576,6 +589,12 @@ export const X_GENRE_RULES = [
       "テスト自動化",
       "テストケース",
       "単体テスト",
+      "異常系テスト",
+      "プロパティベーステスト",
+      "テストって",
+      "テストで防ぐ",
+      "QAトーク",
+      "ZERO TEST",
       "検証速度",
       "自動で検証",
       "品質保証の教科書",
@@ -598,6 +617,12 @@ export const X_GENRE_RULES = [
       "チャッピー",
       "GitHub",
       "skill",
+      "プルリクエスト",
+      "オープンソース",
+      "文字化け",
+      "文字コード",
+      "Hooks",
+      "accuracy",
       "自宅システム",
       "自前サイト",
       "eSIM",
