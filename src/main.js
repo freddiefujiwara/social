@@ -24,6 +24,8 @@ import {
   blogScrollMap,
   blogSpeedMap,
   fetchSnsDetail,
+  SNS_DETAIL_PLATFORMS,
+  mergeSnsDetail,
   fetchSnsHistory,
   dataAsOfText,
   snsHistoryRows,
@@ -248,7 +250,13 @@ const tabPanels = {
   x: document.getElementById("tab-x"),
 };
 
+// The tab currently on screen. A channel tab opened before the
+// SNS snapshot lands still needs its full section fetched once
+// the overview scope settles, so the loaders consult this too.
+let activeTabId = "overview";
+
 function activateTab(tabId, updateUrl = true) {
+  activeTabId = tabId;
   for (const btn of tabButtons) {
     const active = btn.dataset.tab === tabId;
     btn.classList.toggle("active", active);
@@ -256,6 +264,13 @@ function activateTab(tabId, updateUrl = true) {
   }
   for (const [id, panel] of Object.entries(tabPanels)) {
     panel.hidden = id !== tabId;
+  }
+  // A channel tab's full section is fetched the first time the
+  // tab is opened (the initial load only carries the overview's
+  // preview of it); the fetch is a no-op until the snapshot has
+  // settled, and once the section is loaded it never refetches.
+  if (SNS_DETAIL_PLATFORMS.includes(tabId)) {
+    void ensurePlatformScope(tabId);
   }
   if (updateUrl) {
     // The tab moves into the path; the hash keeps only what it
@@ -405,7 +420,15 @@ async function loadDashboard() {
   // rejection from surfacing as unhandled when that check fails
   // first and the loaders never run; a loader's own catch still
   // sees the rejection when it does run.
-  const detailPromise = fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth());
+  // The snapshot starts scoped to the overview (see the scoped
+  // detail section below): the full per-channel sections follow
+  // one at a time as their tabs are first opened.
+  const detailPromise = fetchSnsDetail(
+    CONFIG.GAS_ENDPOINT,
+    auth(),
+    undefined,
+    "overview",
+  );
   detailPromise.catch(() => {});
   const historyPromise = fetchSnsHistory(CONFIG.GAS_ENDPOINT, auth());
   historyPromise.catch(() => {});
@@ -863,6 +886,27 @@ function fillHistoryPending(el) {
   return false;
 }
 
+// The scope counterpart of fillDetailPending, for a section fed
+// by one channel's full detail section: while that section has
+// not been fetched (the detail holds only the overview's trimmed
+// preview of the channel) the section carries the loading line,
+// or the failure line once its fetch has failed; false means the
+// full section is loaded and the caller renders for real. Only
+// consulted once the snapshot itself has settled — the callers
+// run fillDetailPending first, which owns the snapshot's own
+// in-flight and failed states.
+function fillScopePending(el, platform) {
+  if (overviewState.detailScopes[platform]) {
+    return false;
+  }
+  if (overviewState.detailScopeFailed[platform]) {
+    setSectionFailed(el);
+    return true;
+  }
+  setSectionLoading(el);
+  return true;
+}
+
 function fillKpiBoxes(items) {
   const wrap = document.getElementById("kpi-cards");
   wrap.innerHTML = "";
@@ -1186,6 +1230,7 @@ const instagramView = createInstagramRenderer({
 const youtubeView = createYoutubeRenderer({
   fillTotalBoxes,
   fillDetailPending,
+  fillScopePending: (el) => fillScopePending(el, "youtube"),
 });
 const threadsView = createThreadsRenderer();
 
@@ -1254,13 +1299,27 @@ function renderThreads() {
     "sns-threads-interactions",
     threadsInteractions(overviewState.detail),
   );
-  threadsView.syncThreadsPosts(overviewState.detail);
+  // The post rows only land once the channel's full section has
+  // been fetched: until then the tab holds the overview's
+  // trimmed preview, which the per-post sections must never
+  // render as if it were the full list.
+  threadsView.syncThreadsPosts(
+    overviewState.detailScopes.threads ? overviewState.detail : null,
+  );
   // Until the snapshot settles, the genre section and the
   // per-post table carry the load state instead of their empty
   // states (the totals boxes above show "—" under the tab's
-  // status line, like the Instagram tab's sections do).
+  // status line, like the Instagram tab's sections do). The
+  // same holds while only the overview's preview of the channel
+  // is on hand: the sections wait for the full section behind
+  // their scope state instead.
   if (fillDetailPending(document.getElementById("threads-genres"))) {
     fillDetailPending(document.getElementById("threads-posts-body"));
+    document.getElementById("threads-posts-genre-tabs").innerHTML = "";
+    document.getElementById("threads-posts-range").textContent = "";
+  } else if (!overviewState.detailScopes.threads) {
+    fillScopePending(document.getElementById("threads-genres"), "threads");
+    fillScopePending(document.getElementById("threads-posts-body"), "threads");
     document.getElementById("threads-posts-genre-tabs").innerHTML = "";
     document.getElementById("threads-posts-range").textContent = "";
   } else {
@@ -1516,15 +1575,27 @@ function renderX() {
   fillTotalBoxes("sns-x-totals", xTotals(overviewState.detail, overviewState.historyRows));
   renderXApiCredit();
   renderXDailyUsage();
-  xPostRows = xPosts(overviewState.detail);
+  // Like the Threads tab's rows, the post rows wait for the
+  // channel's full section: the overview's preview items lack
+  // the counts and timestamps the table renders. (The follows
+  // line and the unattributed list below read sections the
+  // overview carries empty, so they simply render nothing
+  // until the full section lands.)
+  xPostRows = overviewState.detailScopes.x ? xPosts(overviewState.detail) : [];
   renderXRecentFollows();
   renderXUnattributed();
   wireSortableTable("x-posts-table", xSort, renderXPosts);
   // Until the snapshot settles, the genre section and the
   // per-post table carry the load state instead of their empty
-  // states, like the Threads tab's.
+  // states, like the Threads tab's — and likewise while only
+  // the overview's preview of the channel is on hand.
   if (fillDetailPending(document.getElementById("x-genres"))) {
     fillDetailPending(document.getElementById("x-posts-body"));
+    document.getElementById("x-posts-genre-tabs").innerHTML = "";
+    document.getElementById("x-posts-range").textContent = "";
+  } else if (!overviewState.detailScopes.x) {
+    fillScopePending(document.getElementById("x-genres"), "x");
+    fillScopePending(document.getElementById("x-posts-body"), "x");
     document.getElementById("x-posts-genre-tabs").innerHTML = "";
     document.getElementById("x-posts-range").textContent = "";
   } else {
@@ -1656,8 +1727,17 @@ function renderSns(detail) {
   const demo = detail?.instagram?.demographics ?? {};
   fillDemoRanking("sns-cities", topDemographics(demo.top_cities));
   fillDemoRanking("sns-countries", topDemographics(demo.top_countries));
-  instagramView.renderFollowChart(detail);
-  instagramView.renderSnsMedia(detail);
+  // The follow chart's day entries and the media sections are
+  // built from the full recent-media list; while the detail
+  // holds only the overview's trimmed preview of Instagram they
+  // carry the scope's load state instead of rendering the
+  // preview items as the full list.
+  if (overviewState.detailScopes.instagram) {
+    instagramView.renderFollowChart(detail);
+    instagramView.renderSnsMedia(detail);
+  } else {
+    renderInstagramMediaPending();
+  }
   youtubeView.renderYoutube(detail);
   renderYoutubeHistory();
   renderThreads();
@@ -1671,6 +1751,96 @@ function renderSns(detail) {
     notes.appendChild(p);
   }
   snsBodyEl.hidden = false;
+}
+
+// --- Scoped SNS detail ---
+// The snapshot is fetched in scopes (see fetchSnsDetail): the
+// overview scope at load, then one full section per channel the
+// first time its tab is opened. Every response lands through
+// applyDetailResponse, which merges it over the detail already
+// on hand (mergeSnsDetail) and records which channels are
+// present in full; the renderers gate each channel's list
+// sections on those flags, so the overview's trimmed top-3
+// preview is never mistaken for a channel's full list.
+
+function applyDetailResponse(response) {
+  const merged = mergeSnsDetail(
+    overviewState.detail,
+    response,
+    overviewState.detailScopes,
+  );
+  overviewState.detail = merged.detail;
+  overviewState.detailScopes = merged.loadedScopes;
+  return merged.detail;
+}
+
+// renderSns with the Instagram per-post genre filter kept
+// across it, the auto-refresh's arrangement: a fresh snapshot
+// resets the filter by design, so a re-render that is not a
+// fresh full snapshot (a channel section landing, a scoped
+// refresh) saves and restores it instead.
+function renderSnsKeepingGenreFilter(detail) {
+  const keepGenreFilter = instagramView.mediaGenreFilter();
+  renderSns(detail);
+  instagramView.restoreMediaGenreFilter(keepGenreFilter);
+}
+
+// Fetches one channel's full section the first time it is
+// needed (its tab's first visit, or the landing tab's section
+// once the overview settles). A no-op until the snapshot itself
+// has settled, while a fetch is already in flight, and forever
+// after the section has loaded; a failed fetch ends the tab's
+// gated sections on their failure line and the next visit
+// retries.
+async function ensurePlatformScope(platform) {
+  if (!overviewState.detailSettled || overviewState.detailFailed) {
+    return;
+  }
+  if (
+    overviewState.detailScopes[platform] ||
+    overviewState.detailScopeLoading[platform]
+  ) {
+    return;
+  }
+  overviewState.detailScopeLoading[platform] = true;
+  overviewState.detailScopeFailed[platform] = false;
+  // A retry after a failure first lifts the gated sections back
+  // to their loading line.
+  renderSnsKeepingGenreFilter(overviewState.detail);
+  try {
+    const response = await fetchSnsDetail(
+      CONFIG.GAS_ENDPOINT,
+      auth(),
+      undefined,
+      platform,
+    );
+    if (!response || !response.ok) {
+      throw new Error("SNSデータを取得できませんでした");
+    }
+    const merged = applyDetailResponse(response);
+    overviewState.detailScopeLoading[platform] = false;
+    renderSnsKeepingGenreFilter(merged);
+  } catch {
+    overviewState.detailScopeLoading[platform] = false;
+    overviewState.detailScopeFailed[platform] = true;
+    renderSnsKeepingGenreFilter(overviewState.detail);
+  }
+}
+
+// The Instagram sections the full recent-media list feeds (the
+// follow chart, the genre rollup, the per-post table) while
+// Instagram's full section has not been fetched: each carries
+// the scope's load state, and the range lines and filter
+// buttons stay empty, like the other tabs' gated sections.
+function renderInstagramMediaPending() {
+  fillScopePending(document.getElementById("sns-follow-chart"), "instagram");
+  document.getElementById("sns-genre-range").textContent = "";
+  document.getElementById("sns-genre-treemap").innerHTML = "";
+  document.getElementById("sns-genre-legend").innerHTML = "";
+  fillScopePending(document.getElementById("sns-genre-body"), "instagram");
+  document.getElementById("sns-media-range").textContent = "";
+  document.getElementById("sns-media-genre-tabs").innerHTML = "";
+  fillScopePending(document.getElementById("sns-media-body"), "instagram");
 }
 
 async function loadSns(detailPromise) {
@@ -1687,7 +1857,7 @@ async function loadSns(detailPromise) {
   renderX();
   try {
     const detail = await (detailPromise ??
-      fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth()));
+      fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth(), undefined, "overview"));
     if (!detail || !detail.ok) {
       const message =
         (detail && detail.error) || "SNSデータを取得できませんでした";
@@ -1698,7 +1868,13 @@ async function loadSns(detailPromise) {
       settleSnsFailed();
       return;
     }
-    renderSns(detail);
+    renderSns(applyDetailResponse(detail));
+    // A deep link can land on a channel tab: its full section is
+    // due now that the snapshot has settled (a tab opened later
+    // fetches its own on activation).
+    if (SNS_DETAIL_PLATFORMS.includes(activeTabId)) {
+      void ensurePlatformScope(activeTabId);
+    }
   } catch {
     snsStatusEl.textContent = "SNSデータを取得できませんでした";
     youtubeStatusEl.textContent = "SNSデータを取得できませんでした";
@@ -1845,20 +2021,48 @@ function applySnsHistory(response) {
 // snapshot no longer carries that genre).
 
 async function refreshSnsData() {
-  const detailPromise = fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth());
-  detailPromise.catch(() => {});
   const historyPromise = fetchSnsHistory(CONFIG.GAS_ENDPOINT, auth());
   historyPromise.catch(() => {});
-  let detail = null;
-  try {
-    detail = await detailPromise;
-  } catch {
-    detail = null;
+  // The detail refresh follows the scopes the page already
+  // holds: the overview scope plus the full section of every
+  // channel whose tab has been opened — a channel never opened
+  // is never fetched. Once every channel is loaded the four
+  // scoped reads would reassemble exactly the full snapshot, so
+  // a single unscoped fetch refreshes it instead (the pre-scope
+  // behaviour). Responses land through applyDetailResponse one
+  // by one, so an overview refresh never overwrites a loaded
+  // channel's full section with its preview, and a scope that
+  // fails simply leaves that channel's current figures standing.
+  const loadedPlatforms = SNS_DETAIL_PLATFORMS.filter(
+    (platform) => overviewState.detailScopes[platform],
+  );
+  let merged = null;
+  if (loadedPlatforms.length === SNS_DETAIL_PLATFORMS.length) {
+    let detail = null;
+    try {
+      detail = await fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth());
+    } catch {
+      detail = null;
+    }
+    if (detail && detail.ok) {
+      merged = applyDetailResponse(detail);
+    }
+  } else {
+    const responses = await Promise.all(
+      ["overview", ...loadedPlatforms].map((scope) =>
+        fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth(), undefined, scope).catch(
+          () => null,
+        ),
+      ),
+    );
+    for (const response of responses) {
+      if (response && response.ok) {
+        merged = applyDetailResponse(response);
+      }
+    }
   }
-  if (detail && detail.ok) {
-    const keepGenreFilter = instagramView.mediaGenreFilter();
-    renderSns(detail);
-    instagramView.restoreMediaGenreFilter(keepGenreFilter);
+  if (merged) {
+    renderSnsKeepingGenreFilter(merged);
   }
   let history = null;
   try {

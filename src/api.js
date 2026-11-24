@@ -65,9 +65,99 @@ export async function revokeSession(endpoint, sessionToken, fetchImpl = fetch) {
 // the GA report (id_token or share_token query parameters). Every
 // number in the response can be null; the shaping helpers below are
 // written to tolerate that (and a missing response altogether).
+//
+// The bridge also serves scoped variants of the snapshot, so the
+// first paint does not have to carry every channel's post lists:
+// scope=overview returns every scalar and aggregate with each
+// channel's recent list cut to its three most-viewed items (only
+// the fields the overview's top lists read), and scope=<channel>
+// returns that one channel's full section. An omitted scope asks
+// for the full snapshot, exactly as before scopes existed — and a
+// bridge too old to know scopes answers any scoped request with
+// the full snapshot and no detail_scope field, which
+// mergeSnsDetail below reads as "everything loaded".
 
-export async function fetchSnsDetail(endpoint, auth, fetchImpl = fetch) {
-  return getJson(endpoint, auth, { action: "sns_detail" }, fetchImpl);
+export async function fetchSnsDetail(endpoint, auth, fetchImpl = fetch, scope) {
+  return getJson(endpoint, auth, { action: "sns_detail", scope }, fetchImpl);
+}
+
+// The channels a scoped sns_detail can be asked for, in the
+// order the dashboard's tabs present them.
+export const SNS_DETAIL_PLATFORMS = ["instagram", "youtube", "threads", "x"];
+
+// Lands one sns_detail response on the detail the dashboard
+// already holds, tracking which channels are present in full.
+// `loadedScopes` maps each channel to whether its full section
+// has been fetched; the pair { detail, loadedScopes } comes back
+// fresh (the inputs are never mutated). The response shapes:
+//
+//   - a channel scope ({ detail_scope: "instagram", instagram }):
+//     only that channel's section is replaced and marked loaded;
+//     the rest of the current detail stands.
+//   - the overview scope ({ detail_scope: "overview", ... }):
+//     the response becomes the detail, except that a channel
+//     already loaded in full keeps its full section — the
+//     overview's trimmed top-3 preview never overwrites it.
+//   - no detail_scope: the full snapshot when every channel key
+//     is present (what a pre-scope bridge answers to any request,
+//     and what an unscoped request asks for), marked fully
+//     loaded; a partial scopeless payload merges the channel
+//     sections it does carry over the current detail.
+export function mergeSnsDetail(current, incoming, loadedScopes) {
+  const loaded = {};
+  for (const platform of SNS_DETAIL_PLATFORMS) {
+    loaded[platform] = Boolean(loadedScopes && loadedScopes[platform]);
+  }
+  if (!incoming || typeof incoming !== "object") {
+    return { detail: current ?? null, loadedScopes: loaded };
+  }
+  const scope =
+    typeof incoming.detail_scope === "string" ? incoming.detail_scope : null;
+  const sectionOf = (payload, platform) => {
+    const section = payload ? payload[platform] : null;
+    return section && typeof section === "object" ? section : null;
+  };
+  if (scope && SNS_DETAIL_PLATFORMS.includes(scope)) {
+    const section = sectionOf(incoming, scope);
+    if (section) {
+      const detail = { ...(current ?? {}) };
+      detail[scope] = section;
+      if (incoming.collected_at != null) {
+        detail.collected_at = incoming.collected_at;
+      }
+      loaded[scope] = true;
+      return { detail, loadedScopes: loaded };
+    }
+    // A scope named without its section is not a usable scoped
+    // response; fall through and read the payload as a whole.
+  }
+  if (scope === "overview") {
+    const detail = { ...incoming };
+    for (const platform of SNS_DETAIL_PLATFORMS) {
+      const kept = loaded[platform] ? sectionOf(current, platform) : null;
+      if (kept) {
+        detail[platform] = kept;
+      }
+    }
+    return { detail, loadedScopes: loaded };
+  }
+  const present = SNS_DETAIL_PLATFORMS.filter((platform) =>
+    sectionOf(incoming, platform),
+  );
+  if (present.length === SNS_DETAIL_PLATFORMS.length) {
+    for (const platform of SNS_DETAIL_PLATFORMS) {
+      loaded[platform] = true;
+    }
+    return { detail: incoming, loadedScopes: loaded };
+  }
+  const detail = { ...(current ?? {}) };
+  for (const [key, value] of Object.entries(incoming)) {
+    detail[key] = value;
+  }
+  for (const platform of present) {
+    loaded[platform] = true;
+  }
+  return { detail, loadedScopes: loaded };
 }
 
 // --- SNS history (ga-gas action=sns_history) ---

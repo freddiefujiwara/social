@@ -8,6 +8,29 @@
 export const overviewState = {
   gaTotals: null,
   detail: null,
+  // The detail lands scoped (see fetchSnsDetail / mergeSnsDetail
+  // in api.js): the overview scope first, then each channel's
+  // full section the first time its tab is opened. These maps
+  // track, per channel, whether the full section has been
+  // fetched, whether such a fetch is in flight, and whether the
+  // last one failed — a channel still holding only the
+  // overview's trimmed top-3 preview must never render its tab's
+  // full lists from the preview items, so the renderers gate on
+  // these flags. A full (unscoped) response marks every channel
+  // loaded at once.
+  detailScopes: { instagram: false, youtube: false, threads: false, x: false },
+  detailScopeLoading: {
+    instagram: false,
+    youtube: false,
+    threads: false,
+    x: false,
+  },
+  detailScopeFailed: {
+    instagram: false,
+    youtube: false,
+    threads: false,
+    x: false,
+  },
   // Whether each late-arriving load has finished (and whether
   // it failed). Sections filled by a load that is still in
   // flight show the loading line; once it has failed they show
