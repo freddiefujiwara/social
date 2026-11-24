@@ -83,6 +83,13 @@ describe("dashboard load states (runtime)", () => {
         });
       }
       const params = new URL(text).searchParams;
+      if (params.get("action") === "bootstrap") {
+        // A bridge too old for bootstrap: the action falls
+        // through to the report builder and answers with a
+        // plain report payload — the shape check rejects it
+        // and the load falls back to the individual requests.
+        return report([]);
+      }
       if (params.get("action") === "sns_detail") {
         return detailGate.promise;
       }
@@ -311,6 +318,13 @@ describe("dashboard load states (runtime)", () => {
         });
       }
       const params = new URL(text).searchParams;
+      if (params.get("action") === "bootstrap") {
+        // A bridge too old for bootstrap: the action falls
+        // through to the report builder and answers with a
+        // plain report payload — the shape check rejects it
+        // and the load falls back to the individual requests.
+        return report([]);
+      }
       if (params.get("action") === "sns_detail") {
         return detailGate.promise;
       }
@@ -450,6 +464,13 @@ describe("dashboard load states (runtime)", () => {
         });
       }
       const params = new URL(text).searchParams;
+      if (params.get("action") === "bootstrap") {
+        // A bridge too old for bootstrap: the action falls
+        // through to the report builder and answers with a
+        // plain report payload — the shape check rejects it
+        // and the load falls back to the individual requests.
+        return report([]);
+      }
       if (params.get("action") === "sns_detail") {
         return jsonResponse({
           ok: true,
@@ -573,6 +594,13 @@ describe("dashboard load states (runtime)", () => {
         return jsonResponse({ titles: {}, tags: {} });
       }
       const params = new URL(text).searchParams;
+      if (params.get("action") === "bootstrap") {
+        // A bridge too old for bootstrap: the action falls
+        // through to the report builder and answers with a
+        // plain report payload — the shape check rejects it
+        // and the load falls back to the individual requests.
+        return report([]);
+      }
       if (params.get("action") === "sns_detail") {
         throw new Error("network down");
       }

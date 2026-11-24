@@ -177,6 +177,68 @@ export function snsHistoryRows(response) {
     : [];
 }
 
+// --- Dashboard bootstrap (ga-gas action=bootstrap) ---
+//
+// One request carrying everything the dashboard's first load
+// used to fetch in eight: the six GA report sections (totals,
+// daily, pages, speed, scroll, sources), the SNS snapshot's
+// overview scope (detail) and the SNS history. Each section is
+// exactly the payload its own request returns — same fields,
+// including its own ok flag; a section the bridge could not
+// build carries { ok: false, error } in its key while the rest
+// succeed. Only an auth failure fails the whole response, in
+// the shared verdict shape below.
+//
+// A bridge too old for bootstrap has no such action: the
+// request falls through to its blog report builder and answers
+// with a report-shaped payload (possibly ok: true) that is NOT
+// a bootstrap. A response therefore only counts as one when it
+// names the action and carries every section as an object;
+// anything else reads as "bootstrap unavailable" and the caller
+// falls back to the individual requests.
+
+export const BOOTSTRAP_SECTIONS = [
+  "totals",
+  "daily",
+  "pages",
+  "speed",
+  "scroll",
+  "sources",
+  "detail",
+  "history",
+];
+
+export async function fetchBootstrap(endpoint, auth, fetchImpl = fetch) {
+  return getJson(endpoint, auth, { action: "bootstrap" }, fetchImpl);
+}
+
+export function isBootstrapResponse(response) {
+  if (!response || typeof response !== "object") {
+    return false;
+  }
+  if (response.action !== "bootstrap") {
+    return false;
+  }
+  return BOOTSTRAP_SECTIONS.every(
+    (key) => response[key] && typeof response[key] === "object",
+  );
+}
+
+// The bridge's auth verdict, the shape every action answers a
+// dead session or share token with: { ok: false, status: 401 |
+// 403, error }. A response in this shape is a verdict, never an
+// "unavailable" signal: the individual requests would only fail
+// the same way, so callers must land on the gate/expired outcome
+// it dictates instead of falling back.
+export function isAuthFailureResponse(response) {
+  return Boolean(
+    response &&
+      typeof response === "object" &&
+      response.ok === false &&
+      (response.status === 401 || response.status === 403),
+  );
+}
+
 const jstDayKeyFormat = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Tokyo",
   year: "numeric",

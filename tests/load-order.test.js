@@ -5,12 +5,13 @@ import { fileURLToPath } from "node:url";
 
 // Guards for the dashboard's loading order, which the unit tests
 // over src modules cannot see:
-//   - every request is independent (a different action or report
-//     shape off the same bridge), so loadDashboard must start
-//     them all up front — the SNS snapshot and history included —
-//     instead of letting sections queue behind each other;
+//   - the bridge load first tries the single bootstrap request
+//     (every section in one payload); when the bridge cannot
+//     offer it, the fallback starts every request up front —
+//     the SNS snapshot and history included — instead of letting
+//     sections queue behind each other;
 //   - the dashboard reveal waits only for the GA totals (that
-//     response doubles as the auth verdict); the blog sections
+//     payload doubles as the auth verdict); the blog sections
 //     and the SNS sections fill in as their own responses land.
 // A regression to "await everything, then reveal" would put the
 // loading screen back at the mercy of the slowest request.
@@ -30,19 +31,28 @@ const fnBody = (header) => {
 
 describe("dashboard loading order", () => {
   const dashboard = fnBody("async function loadDashboard()");
+  const load = fnBody("async function fetchDashboardLoad()");
+
+  it("tries the bootstrap request before the individual fallback", () => {
+    expect(dashboard).toContain("await fetchDashboardLoad()");
+    expect(load.indexOf("fetchBootstrap(")).toBeGreaterThan(-1);
+    expect(load.indexOf("fetchBootstrap(")).toBeLessThan(
+      load.indexOf("fetchReport("),
+    );
+  });
 
   it("starts the SNS snapshot and history before awaiting the totals", () => {
-    const totalsAwait = dashboard.indexOf("await totalsPromise");
+    const totalsAwait = load.indexOf("await totalsPromise");
     expect(totalsAwait).toBeGreaterThan(-1);
-    expect(dashboard.indexOf("fetchSnsDetail(")).toBeGreaterThan(-1);
-    expect(dashboard.indexOf("fetchSnsDetail(")).toBeLessThan(totalsAwait);
-    expect(dashboard.indexOf("fetchSnsHistory(")).toBeGreaterThan(-1);
-    expect(dashboard.indexOf("fetchSnsHistory(")).toBeLessThan(totalsAwait);
+    expect(load.indexOf("fetchSnsDetail(")).toBeGreaterThan(-1);
+    expect(load.indexOf("fetchSnsDetail(")).toBeLessThan(totalsAwait);
+    expect(load.indexOf("fetchSnsHistory(")).toBeGreaterThan(-1);
+    expect(load.indexOf("fetchSnsHistory(")).toBeLessThan(totalsAwait);
   });
 
   it("hands the pre-started promises to the SNS loaders", () => {
-    expect(dashboard).toContain("loadSns(detailPromise)");
-    expect(dashboard).toContain("loadSnsHistory(historyPromise)");
+    expect(dashboard).toContain("loadSns(load.detailPromise)");
+    expect(dashboard).toContain("loadSnsHistory(load.historyPromise)");
   });
 
   it("does not gate the reveal on the whole report batch", () => {
