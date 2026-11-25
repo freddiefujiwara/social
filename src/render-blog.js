@@ -7,9 +7,11 @@ import { CONFIG } from "./config.js";
 import {
   dimensionRanking,
   blogArticlesByDate,
+  blogLanguageViews,
   mergeBlogTitles,
   blogGenreStats,
   formatCount,
+  formatPercent,
   formatJstDateTime,
   TRANSLATION_LANGS,
   translationAttention,
@@ -31,6 +33,34 @@ export function renderRanking(elId, response, limit) {
     // like every other raw count.
     span.className = "rank-value amount-value";
     span.textContent = item.views.toLocaleString();
+    li.appendChild(span);
+    list.appendChild(li);
+  }
+}
+
+// --- Blog views by language (blog tab) ---
+// The three-row split of the page rows by URL language (see
+// blogLanguageViews in api.js), in the sources ranking's shape.
+// It renders only when the page rows land — the loader calls it
+// on the same success path as the genre rollup — and the
+// section carries no loading or failure line of its own, so a
+// failed pages load simply leaves the list empty. The counts
+// are blog GA figures and mask like every other blog number;
+// the shares are ratios, which the masking never covers, so
+// they sit outside the masked count span.
+
+export function renderBlogLanguages(response) {
+  const list = document.getElementById("blog-languages");
+  list.innerHTML = "";
+  for (const lang of blogLanguageViews(response)) {
+    const li = document.createElement("li");
+    li.textContent = lang.label;
+    const span = document.createElement("span");
+    span.className = "rank-value";
+    const count = document.createElement("span");
+    count.className = "amount-value";
+    count.textContent = formatCount(lang.views);
+    span.append(count, `回（${formatPercent(lang.share)}）`);
     li.appendChild(span);
     list.appendChild(li);
   }

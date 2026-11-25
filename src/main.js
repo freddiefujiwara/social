@@ -119,6 +119,7 @@ import {
   renderRanking,
   renderBlogDaily,
   renderBlogGenres,
+  renderBlogLanguages,
   renderBlogTranslationStatus,
   renderLangPref,
 } from "./render-blog.js";
@@ -732,6 +733,11 @@ async function fillBlogPages(pagesPromise, titlesPromise, metaPromise, speedProm
   // renders only when the map actually arrived; blogGenreStats
   // returns nothing without one and the section says why instead.
   renderBlogGenres(pages, meta, titles);
+  // The by-language split is a pure re-cut of the same page
+  // rows, so it renders here, on the pages success path only:
+  // when the rows fail to land, settleBlogPagesFailed leaves
+  // its list empty and the section shows nothing at all.
+  renderBlogLanguages(pages);
   // The scroll-depth map rides its own report, awaited only
   // here, where the per-article table is built: it has been in
   // flight since loadDashboard started it, and any failure
