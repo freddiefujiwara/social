@@ -1847,12 +1847,30 @@ const KNOWN_PAGES = {
   "/social/": "アクセス解析",
 };
 
+// A pagePath with its routing prefixes removed: the leading
+// slash, the /blog/ segment when present, a language segment
+// (en or zh) when it sits immediately after /blog/, and one
+// trailing slash. What remains is the candidate article id —
+// or, for non-article paths, a remainder that still contains
+// a slash or fails the article token test below. The language
+// segment counts only right after /blog/, mirroring
+// social-gas's articleIdFromPath_ so the gas and the front end
+// key an article the same way: /blog/en/<id> belongs to the
+// article <id>, while a bare /en/<id> is not an article path.
+function pagePathRest(path) {
+  const raw = String(path || "");
+  const rest = raw.replace(/^\/(blog\/)?/, "").replace(/\/$/, "");
+  return raw.startsWith("/blog/") ? rest.replace(/^(en|zh)\//, "") : rest;
+}
+
 // The identity a pagePath counts under in the ranking. Blog articles
 // were recorded both as /<id> (the SPA's base-relative route) and as
 // /blog/<id> (the real URL); both canonicalize to /blog/<id> so their
-// views merge into one row. Every other path is its own identity.
+// views merge into one row. The blog's translations add
+// /blog/en/<id> and /blog/zh/<id>, which canonicalize the same way.
+// Every other path is its own identity.
 export function canonicalPageKey(path) {
-  const id = String(path || "").replace(/^\/(blog\/)?/, "").replace(/\/$/, "");
+  const id = pagePathRest(path);
   // Article ids are the long URL-safe document tokens (they start
   // with a digit); app pages such as /list-of-stuff/ are not articles
   // and keep their own identity.
@@ -1863,15 +1881,16 @@ export function canonicalPageKey(path) {
 }
 
 // Shape one GA pagePath into a display label and a link target.
-// Article paths appear both as /<id> and /blog/<id>; both resolve to
-// the canonical /blog/<id> URL. Unknown paths keep the raw path as
-// the label and still link to the page itself.
+// Article paths appear both as /<id> and /blog/<id> — and as
+// /blog/en/<id> / /blog/zh/<id> for the translations; all resolve
+// to the canonical /blog/<id> URL. Unknown paths keep the raw
+// path as the label and still link to the page itself.
 export function pageDisplay(path, titles, origin) {
   const href = (p) => `${origin}${p}`;
   if (KNOWN_PAGES[path]) {
     return { label: KNOWN_PAGES[path], href: href(path) };
   }
-  const id = path.replace(/^\/(blog\/)?/, "").replace(/\/$/, "");
+  const id = pagePathRest(path);
   if (id && !id.includes("/") && titles && titles.has(id)) {
     return { label: titles.get(id), href: href(`/blog/${id}`) };
   }
