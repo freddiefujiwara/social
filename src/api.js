@@ -1898,6 +1898,66 @@ export function pageRanking(response, titles, origin, limit = 10) {
     .slice(0, limit);
 }
 
+// --- Blog views by language (blog tab) ---
+// The site serves its pages in three languages, told apart by
+// the URL alone: English lives under /en/ (the top page's
+// language root) and /blog/en/ (the blog's), Chinese under
+// /zh/ and /blog/zh/ analogously, and everything else — the
+// Japanese blog and top page, plus the Japanese-only app paths
+// such as /list-of-stuff/ — counts as Japanese. The split is a
+// pure prefix rule over the raw page rows (no canonical
+// merging: an article's /<id> row is Japanese either way), so
+// the three buckets always sum to the pages report's own
+// total. Only views exist per path — the report carries no
+// per-path users — so the split is views-only.
+
+export function blogLanguageOfPath(path) {
+  if (
+    path === "/en" ||
+    path.startsWith("/en/") ||
+    path.startsWith("/blog/en/")
+  ) {
+    return "en";
+  }
+  if (
+    path === "/zh" ||
+    path.startsWith("/zh/") ||
+    path.startsWith("/blog/zh/")
+  ) {
+    return "zh";
+  }
+  return "ja";
+}
+
+const BLOG_LANGUAGE_LABELS = [
+  { key: "ja", label: "日本語" },
+  { key: "en", label: "英語" },
+  { key: "zh", label: "中国語" },
+];
+
+// The three language buckets over a pages report, in display
+// order, each with its share of the report's total views (one
+// decimal; 0 when the report is empty).
+export function blogLanguageViews(response) {
+  const sums = { ja: 0, en: 0, zh: 0 };
+  let total = 0;
+  for (const row of rowsOf(response)) {
+    const path = dimensionValueOf(row);
+    if (path === null) {
+      continue;
+    }
+    const views = Number(row.metricValues?.[0]?.value) || 0;
+    sums[blogLanguageOfPath(path)] += views;
+    total += views;
+  }
+  return BLOG_LANGUAGE_LABELS.map(({ key, label }) => ({
+    key,
+    label,
+    views: sums[key],
+    share: total > 0 ? Math.round((sums[key] / total) * 1000) / 10 : 0,
+  }));
+}
+
 // Per-article display times from the speed report (pagePath x
 // [render_ms total, sample count, slow count], served by
 // social-gas from its blog_speed tab), as a Map of article id
