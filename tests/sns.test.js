@@ -223,6 +223,8 @@ describe("sns history series", () => {
     expect(jstDateKey("2026-11-09T01:00:00.000Z")).toBe("20261109");
     expect(jstDateKey(null)).toBeNull();
     expect(jstDateKey("not-a-date")).toBeNull();
+    expect(jstDateKey("100")).toBeNull();
+    expect(jstDateKey("9999-12-31T15:00:00.000Z")).toBeNull();
   });
 
   it("shapes rows into the combined-follower series only", () => {
