@@ -253,7 +253,9 @@ export function jstDateKey(iso) {
   if (!date || Number.isNaN(date.getTime())) {
     return null;
   }
-  return jstDayKeyFormat.format(date).replace(/-/g, "");
+  const key = jstDayKeyFormat.format(date).replace(/-/g, "");
+  // A parseable input can still format to a shorter or longer year.
+  return /^\d{8}$/.test(key) ? key : null;
 }
 
 // The overview trend's series: only the combined follower

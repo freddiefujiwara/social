@@ -58,7 +58,7 @@ export function createYoutubeRenderer({
     youtubeRangeEl.textContent = "";
     if (youtubeVideoRows.length) {
       youtubeRangeEl.append(
-        "対象：全ての動画（全",
+        "対象：最近の動画（表示：",
         countSpan(youtubeVideoRows.length),
         "件）",
       );
