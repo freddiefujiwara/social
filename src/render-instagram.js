@@ -50,6 +50,7 @@ import {
   wireSortableTable,
   updateSortHeaders,
   renderGenreFilterTabs,
+  genreTopPostCell,
 } from "./render-common.js";
 
 export function createInstagramRenderer({ fillTotalBoxes, fillHistoryPending }) {
@@ -261,26 +262,7 @@ export function createInstagramRenderer({ fillTotalBoxes, fillHistoryPending }) 
       tr.appendChild(numCell(row.avgViews));
       tr.appendChild(rateCell(formatRate(row.saveRate)));
       tr.appendChild(rateCell(formatRate(row.likeRate)));
-      const topTd = document.createElement("td");
-      if (row.top) {
-        if (row.top.permalink) {
-          const link = document.createElement("a");
-          link.href = row.top.permalink;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.textContent = row.top.title;
-          topTd.appendChild(link);
-        } else {
-          topTd.textContent = row.top.title;
-        }
-        const span = document.createElement("span");
-        span.className = "rank-value amount-value";
-        span.textContent = formatCount(row.top.views);
-        topTd.appendChild(span);
-      } else {
-        topTd.textContent = "—";
-      }
-      tr.appendChild(topTd);
+      tr.appendChild(genreTopPostCell(row.top));
       tbody.appendChild(tr);
     }
   }
