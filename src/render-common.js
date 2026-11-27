@@ -82,6 +82,32 @@ export function rateCell(text) {
   return td;
 }
 
+// Representative post for the genre tables. The count remains maskable.
+export function genreTopPostCell(top) {
+  const td = document.createElement("td");
+  if (!top) {
+    td.textContent = "—";
+    return td;
+  }
+
+  if (top.permalink) {
+    const link = document.createElement("a");
+    link.href = top.permalink;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = top.title;
+    td.appendChild(link);
+  } else {
+    td.textContent = top.title;
+  }
+
+  const count = document.createElement("span");
+  count.className = "rank-value amount-value";
+  count.textContent = formatCount(top.views);
+  td.appendChild(count);
+  return td;
+}
+
 // One post-list thumbnail: a fixed-size frame the row height
 // never depends on, with the image cover-cropped into it. `shape`
 // names the frame's aspect — "vertical" (reels), "square"
@@ -295,26 +321,7 @@ export function renderPostGenres(wrap, stats, sortState, rerender) {
     tr.appendChild(numCell(row.totalViews));
     tr.appendChild(numCell(row.avgViews));
     tr.appendChild(rateCell(formatRate(row.likeRate)));
-    const topTd = document.createElement("td");
-    if (row.top) {
-      if (row.top.permalink) {
-        const link = document.createElement("a");
-        link.href = row.top.permalink;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.textContent = row.top.title;
-        topTd.appendChild(link);
-      } else {
-        topTd.textContent = row.top.title;
-      }
-      const span = document.createElement("span");
-      span.className = "rank-value amount-value";
-      span.textContent = formatCount(row.top.views);
-      topTd.appendChild(span);
-    } else {
-      topTd.textContent = "—";
-    }
-    tr.appendChild(topTd);
+    tr.appendChild(genreTopPostCell(row.top));
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
