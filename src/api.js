@@ -83,7 +83,13 @@ export async function fetchSnsDetail(endpoint, auth, fetchImpl = fetch, scope) {
 
 // The channels a scoped sns_detail can be asked for, in the
 // order the dashboard's tabs present them.
-export const SNS_DETAIL_PLATFORMS = ["instagram", "youtube", "threads", "x"];
+export const SNS_DETAIL_PLATFORMS = [
+  "instagram",
+  "youtube",
+  "threads",
+  "x",
+  "tiktok",
+];
 
 // Lands one sns_detail response on the detail the dashboard
 // already holds, tracking which channels are present in full.
@@ -542,7 +548,9 @@ export function dataAsOfText(collectedAt) {
 // The combined follower total shown on the top page: the main
 // Instagram account, Threads, YouTube and X. The secondary
 // Instagram account (@anemone_cancer) is deliberately not part
-// of the sum. Null when not a single network reported a number.
+// of the sum, and neither is TikTok — the top page's hero names
+// only the four networks above. Null when not a single network
+// reported a number.
 export function snsTotalFollowers(detail) {
   if (!detail || typeof detail !== "object") {
     return null;
@@ -849,6 +857,10 @@ export function youtubeVideos(detail) {
   return listOf(detail?.youtube, "recent_videos");
 }
 
+export function tiktokVideos(detail) {
+  return listOf(detail?.tiktok, "recent_videos");
+}
+
 // The still image for one Instagram post, as collected into
 // thumbnail_url (a reel's thumbnail, or a photo's own image).
 // The URLs are signed and expire; the hourly collection refreshes
@@ -933,6 +945,24 @@ export function youtubeTotals(detail, historyRows) {
     followerTotalBox("登録者", yt.subscribers, change, growth),
     { label: "総再生回数", value: formatCount(yt.total_views) },
     { label: "動画本数", value: formatCount(yt.video_count) },
+  ];
+}
+
+// Totals boxes for the TikTok tab: the account's own numbers
+// only, as collected with the detail. Unlike the other channel
+// tabs there are no change lines: the history response carries
+// no TikTok series to compare against, and none of the figures
+// is published on the top page (the hero's follower breakdown
+// deliberately leaves TikTok out), so no card is exempt from
+// masking. Every number can be null — before the account is
+// authorized the whole section is — and shows "—".
+export function tiktokTotals(detail) {
+  const tt = detail?.tiktok ?? {};
+  return [
+    { label: "フォロワー数", value: formatCount(tt.followers) },
+    { label: "フォロー数", value: formatCount(tt.following) },
+    { label: "総いいね数", value: formatCount(tt.total_likes) },
+    { label: "動画数", value: formatCount(tt.video_count) },
   ];
 }
 
@@ -1666,9 +1696,9 @@ export function topMedia(detail, limit = 5) {
 
 // The overview's per-channel top lists: the most-viewed items of
 // every channel, each under its channel's name and the metric
-// that channel actually reports — Instagram and YouTube count
-// 再生回数, Threads and X count 表示回数, and the blog counts its
-// articles' 表示回数. Every item is shaped the same way,
+// that channel actually reports — Instagram, YouTube and TikTok
+// count 再生回数, Threads and X count 表示回数, and the blog counts
+// its articles' 表示回数. Every item is shaped the same way,
 // { label, href, value }, with href null when the item carries
 // no link, so a single renderer serves all five sections. The
 // blog rows are ranked by the caller (pageRanking over the GA
@@ -1713,6 +1743,15 @@ export function topPostsByChannel(detail, blogItems = [], limit = 3) {
         label: captionHead(post.text) || "投稿",
         href: post.url ?? null,
         value: post.views,
+      })),
+    },
+    {
+      channel: "TikTok",
+      metric: "再生回数",
+      items: top(tiktokVideos(detail), (video) => ({
+        label: video.title || "動画",
+        href: video.url ?? null,
+        value: video.views,
       })),
     },
     {

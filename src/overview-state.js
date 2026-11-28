@@ -18,18 +18,26 @@ export const overviewState = {
   // full lists from the preview items, so the renderers gate on
   // these flags. A full (unscoped) response marks every channel
   // loaded at once.
-  detailScopes: { instagram: false, youtube: false, threads: false, x: false },
+  detailScopes: {
+    instagram: false,
+    youtube: false,
+    threads: false,
+    x: false,
+    tiktok: false,
+  },
   detailScopeLoading: {
     instagram: false,
     youtube: false,
     threads: false,
     x: false,
+    tiktok: false,
   },
   detailScopeFailed: {
     instagram: false,
     youtube: false,
     threads: false,
     x: false,
+    tiktok: false,
   },
   // Whether each late-arriving load has finished (and whether
   // it failed). Sections filled by a load that is still in

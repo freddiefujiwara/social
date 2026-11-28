@@ -478,6 +478,7 @@ describe("topPostsByChannel", () => {
       ["YouTube", "再生回数"],
       ["Threads", "表示回数"],
       ["X", "表示回数"],
+      ["TikTok", "再生回数"],
       ["ブログ", "表示回数"],
     ]);
     const byChannel = Object.fromEntries(
@@ -511,7 +512,7 @@ describe("topPostsByChannel", () => {
     // per-article counts are platform and GA figures no public
     // page prints with these values (the blog's are last-28-day
     // rollups), so masking treats every row alike.
-    for (const channel of ["Instagram", "YouTube", "Threads", "X", "ブログ"]) {
+    for (const channel of ["Instagram", "YouTube", "Threads", "X", "TikTok", "ブログ"]) {
       expect(byChannel[channel].every((i) => i.public === undefined)).toBe(
         true,
       );
@@ -520,9 +521,9 @@ describe("topPostsByChannel", () => {
 
   it("tolerates missing data with empty item lists", () => {
     const sections = topPostsByChannel(null);
-    expect(sections).toHaveLength(5);
+    expect(sections).toHaveLength(6);
     expect(sections.every((s) => s.items.length === 0)).toBe(true);
-    expect(topPostsByChannel(FULL, "nope")[4].items).toEqual([]);
+    expect(topPostsByChannel(FULL, "nope")[5].items).toEqual([]);
   });
 });
 

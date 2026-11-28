@@ -75,6 +75,7 @@
             <button type="button" class="tab-button" data-tab="youtube">YouTube</button>
             <button type="button" class="tab-button" data-tab="threads">Threads</button>
             <button type="button" class="tab-button" data-tab="x">X</button>
+            <button type="button" class="tab-button" data-tab="tiktok">TikTok</button>
           </nav>
           <div id="tab-overview" class="tab-panel">
             <section class="table-wrap">
@@ -361,6 +362,31 @@
               </div>
               <div id="x-unattributed"></div>
               <div id="x-notes"></div>
+            </section>
+          </div>
+          <div id="tab-tiktok" class="tab-panel" hidden>
+            <section class="table-wrap">
+              <h2 class="section-title">TikTok</h2>
+              <p class="meta" id="tiktok-status"></p>
+              <div class="totals-row" id="sns-tiktok-totals"></div>
+              <h3 class="subsection-title">動画ごと</h3>
+              <p class="meta" id="tiktok-videos-range"></p>
+              <div class="table-scroll">
+                <table class="data-table" id="sns-tiktok-table">
+                  <thead>
+                    <tr>
+                      <th class="sortable" data-sort-key="title">タイトル</th>
+                      <th class="sortable" data-sort-key="published_at">公開日時</th>
+                      <th class="num sortable" data-sort-key="duration_sec">長さ</th>
+                      <th class="num sortable" data-sort-key="views">再生回数</th>
+                      <th class="num sortable" data-sort-key="likes">いいね</th>
+                      <th class="num sortable" data-sort-key="comments">コメント</th>
+                      <th class="num sortable" data-sort-key="shares">シェア</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sns-tiktok-body"></tbody>
+                </table>
+              </div>
             </section>
           </div>
         </div>
