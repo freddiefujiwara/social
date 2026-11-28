@@ -546,11 +546,10 @@ export function dataAsOfText(collectedAt) {
 }
 
 // The combined follower total shown on the top page: the main
-// Instagram account, Threads, YouTube and X. The secondary
-// Instagram account (@anemone_cancer) is deliberately not part
-// of the sum, and neither is TikTok — the top page's hero names
-// only the four networks above. Null when not a single network
-// reported a number.
+// Instagram account, Threads, YouTube, X and TikTok. The
+// secondary Instagram account (@anemone_cancer) is deliberately
+// not part of the sum. Null when not a single network reported
+// a number.
 export function snsTotalFollowers(detail) {
   if (!detail || typeof detail !== "object") {
     return null;
@@ -560,6 +559,7 @@ export function snsTotalFollowers(detail) {
     detail.threads?.followers,
     detail.youtube?.subscribers,
     detail.x?.followers,
+    detail.tiktok?.followers,
   ].filter(isNum);
   return parts.length ? parts.reduce((sum, v) => sum + v, 0) : null;
 }

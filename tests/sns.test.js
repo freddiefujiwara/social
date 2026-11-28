@@ -796,6 +796,20 @@ describe("totals and overview", () => {
     expect(snsTotalFollowers(DETAIL)).toBe(2000);
   });
 
+  it("snsTotalFollowers includes TikTok once it reports a number", () => {
+    const detail = {
+      instagram: { freddiefujiwara: 2000 },
+      threads: { followers: 252 },
+      youtube: { subscribers: 10 },
+      x: { followers: 321 },
+      tiktok: { followers: 80 },
+    };
+    expect(snsTotalFollowers(detail)).toBe(2000 + 252 + 10 + 321 + 80);
+    // Without a TikTok section the sum is unchanged.
+    const { tiktok, ...withoutTikTok } = detail;
+    expect(snsTotalFollowers(withoutTikTok)).toBe(2000 + 252 + 10 + 321);
+  });
+
   it("snsTotalFollowers is null when nothing reported", () => {
     expect(snsTotalFollowers(null)).toBeNull();
     expect(snsTotalFollowers({})).toBeNull();
