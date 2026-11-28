@@ -1,12 +1,13 @@
 // The TikTok tab's totals and per-video table, the counterpart
 // of the YouTube tab's (render-youtube.js): same factory shape,
-// same load-state gates, same sortable table. Two differences
-// the data forces: the rows carry no thumbnail URL to derive a
-// still from, so the table has no thumbnail column; and TikTok
-// reports a share count per video, which gets a column of its
-// own. Until the account is authorized the section's figures
-// are all null — the totals read "—" and the table its empty
-// state, exactly as a channel with nothing collected yet.
+// same load-state gates, same sortable table, thumbnails
+// included — the covers are vertical stills, so each row's frame
+// is the vertical one the Instagram reels use. One difference
+// the data forces: TikTok reports a share count per video,
+// which gets a column of its own. Until the account is
+// authorized the section's figures are all null — the totals
+// read "—" and the table its empty state, exactly as a channel
+// with nothing collected yet.
 import {
   tiktokTotals,
   tiktokVideos,
@@ -18,6 +19,7 @@ import {
 import { overviewState } from "./overview-state.js";
 import {
   countSpan,
+  thumbnailCell,
   wireSortableTable,
   updateSortHeaders,
 } from "./render-common.js";
@@ -79,7 +81,7 @@ export function createTiktokRenderer({
       }
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = 7;
+      td.colSpan = 8;
       td.textContent = "データがありません";
       tr.appendChild(td);
       tbody.appendChild(tr);
@@ -88,6 +90,12 @@ export function createTiktokRenderer({
     }
     for (const video of videos) {
       const tr = document.createElement("tr");
+      tr.appendChild(
+        thumbnailCell({
+          candidates: [video.cover_url],
+          shape: "vertical",
+        }),
+      );
       const titleTd = document.createElement("td");
       if (video.url) {
         const link = document.createElement("a");

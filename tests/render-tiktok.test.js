@@ -36,6 +36,7 @@ const DETAIL = {
         id: "v2",
         title: "大きい動画",
         url: "https://www.tiktok.com/@freddiefujiwara/video/2",
+        cover_url: "https://example.com/covers/2.jpg",
         published_at: "2026-11-28T02:00:00Z",
         views: 1234,
         likes: 56,
@@ -51,6 +52,7 @@ function setupDom() {
   document.body.innerHTML =
     '<p id="tiktok-videos-range"></p>' +
     '<table id="sns-tiktok-table"><thead><tr>' +
+    '<th aria-label="サムネイル"></th>' +
     '<th class="sortable" data-sort-key="title">タイトル</th>' +
     '<th class="sortable" data-sort-key="published_at">公開日時</th>' +
     '<th class="num sortable" data-sort-key="duration_sec">長さ</th>' +
@@ -96,24 +98,49 @@ describe("createTiktokRenderer", () => {
 
     const rows = document.querySelectorAll("#sns-tiktok-body tr");
     const first = rows[0].querySelectorAll("td");
-    const link = first[0].querySelector("a");
+    const link = first[1].querySelector("a");
     expect(link.textContent).toBe("大きい動画");
     expect(link.href).toBe("https://www.tiktok.com/@freddiefujiwara/video/2");
-    expect(first[1].textContent).toContain("2026");
-    expect(first[2].textContent).toBe("2:01");
-    expect([...first].slice(3).map((td) => td.textContent)).toEqual([
+    expect(first[2].textContent).toContain("2026");
+    expect(first[3].textContent).toBe("2:01");
+    expect([...first].slice(4).map((td) => td.textContent)).toEqual([
       "1,234",
       "56",
       "7",
       "8",
     ]);
     // Every count cell masks like the other channels' counts.
-    for (const td of [...first].slice(2)) {
+    for (const td of [...first].slice(3)) {
       expect(td.className).toContain("amount-value");
     }
     const second = rows[1].querySelectorAll("td");
-    expect(second[0].querySelector("a").textContent).toBe("小さい動画");
-    expect(second[2].textContent).toBe("0:50");
+    expect(second[1].querySelector("a").textContent).toBe("小さい動画");
+    expect(second[3].textContent).toBe("0:50");
+  });
+
+  it("leads each row with the cover in a vertical thumbnail frame", () => {
+    setupDom();
+    overviewState.detailScopes.tiktok = true;
+    const { renderTiktok } = createRenderer();
+    renderTiktok(DETAIL);
+
+    const rows = document.querySelectorAll("#sns-tiktok-body tr");
+    // The covered video: a vertical frame holding its cover image.
+    const covered = rows[0].querySelectorAll("td")[0];
+    expect(covered.className).toContain("thumb-cell");
+    const frame = covered.querySelector(".thumb-frame");
+    expect(frame.className).toContain("thumb-vertical");
+    expect(frame.querySelector("img").src).toBe(
+      "https://example.com/covers/2.jpg",
+    );
+    // The coverless video: the same frame, empty, and the rest
+    // of the row renders as usual.
+    const bare = rows[1].querySelectorAll("td");
+    expect(bare[0].className).toContain("thumb-cell");
+    expect(bare[0].querySelector(".thumb-frame")).not.toBeNull();
+    expect(bare[0].querySelector("img")).toBeNull();
+    expect(bare[1].querySelector("a").textContent).toBe("小さい動画");
+    expect(bare).toHaveLength(8);
   });
 
   it("holds the overview's preview back until the full section lands", () => {
@@ -137,6 +164,7 @@ describe("createTiktokRenderer", () => {
     const rows = document.querySelectorAll("#sns-tiktok-body tr");
     expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toBe("データがありません");
+    expect(rows[0].querySelector("td").colSpan).toBe(8);
   });
 
   it("shows the empty state while the account is not authorized yet", () => {
