@@ -217,7 +217,7 @@ describe("tiktokVideos", () => {
 });
 
 describe("TikTok in the shared figures", () => {
-  it("stays out of the combined follower total", () => {
+  it("is part of the combined follower total", () => {
     expect(
       snsTotalFollowers({
         instagram: { freddiefujiwara: 2000 },
@@ -226,8 +226,8 @@ describe("TikTok in the shared figures", () => {
         x: { followers: 1800 },
         tiktok: { followers: 80 },
       }),
-    ).toBe(4110);
-    expect(snsTotalFollowers({ tiktok: { followers: 80 } })).toBeNull();
+    ).toBe(4190);
+    expect(snsTotalFollowers({ tiktok: { followers: 80 } })).toBe(80);
   });
 
   it("joins the overview's top lists under its own channel name", () => {
