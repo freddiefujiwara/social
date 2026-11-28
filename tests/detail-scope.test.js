@@ -14,6 +14,7 @@ const NO_SCOPES = Object.freeze({
   youtube: false,
   threads: false,
   x: false,
+  tiktok: false,
 });
 
 // The overview scope's payload, in the shape social-gas serves
@@ -21,7 +22,7 @@ const NO_SCOPES = Object.freeze({
 // top 3 by views with only the fields the overview's top lists
 // read (Instagram: caption / type / permalink / views; YouTube:
 // title / url / views; Threads: text / permalink / views; X:
-// text / url / views).
+// text / url / views; TikTok: title / url / views).
 const OVERVIEW = {
   ok: true,
   action: "sns_detail",
@@ -77,6 +78,16 @@ const OVERVIEW = {
     unattributed_reactions: [],
     recent_follows: [],
   },
+  tiktok: {
+    followers: 80,
+    recent_videos: [
+      {
+        title: "TikTokの動画",
+        url: "https://www.tiktok.com/@freddiefujiwara/video/1",
+        views: 70,
+      },
+    ],
+  },
 };
 
 const INSTAGRAM_SECTION = {
@@ -115,6 +126,7 @@ const FULL = {
   youtube: { subscribers: 10, recent_videos: [] },
   threads: { followers: 300, recent_posts: [] },
   x: { followers: 1800, recent_posts: [] },
+  tiktok: { followers: 80, recent_videos: [] },
 };
 
 describe("fetchSnsDetail scopes", () => {
@@ -145,6 +157,7 @@ describe("mergeSnsDetail", () => {
       youtube: false,
       threads: false,
       x: false,
+      tiktok: false,
     });
   });
 
@@ -183,6 +196,13 @@ describe("mergeSnsDetail", () => {
     expect(byChannel["X"]).toEqual([
       { label: "Xの投稿", href: "https://x.com/i/web/status/1", value: 60 },
     ]);
+    expect(byChannel["TikTok"]).toEqual([
+      {
+        label: "TikTokの動画",
+        href: "https://www.tiktok.com/@freddiefujiwara/video/1",
+        value: 70,
+      },
+    ]);
   });
 
   it("merges a channel scope by replacing only that channel's section", () => {
@@ -202,6 +222,7 @@ describe("mergeSnsDetail", () => {
       youtube: false,
       threads: false,
       x: false,
+      tiktok: false,
     });
     // The flags the caller passed in are not mutated.
     expect(first.loadedScopes).toEqual({
@@ -209,6 +230,7 @@ describe("mergeSnsDetail", () => {
       youtube: false,
       threads: false,
       x: false,
+      tiktok: false,
     });
   });
 
@@ -251,6 +273,7 @@ describe("mergeSnsDetail", () => {
       youtube: true,
       threads: true,
       x: true,
+      tiktok: true,
     });
   });
 

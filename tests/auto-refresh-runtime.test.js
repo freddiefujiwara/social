@@ -56,6 +56,7 @@ const detailPayload = (collectedAt, musicViews) =>
     youtube: {},
     threads: {},
     x: {},
+    tiktok: {},
   });
 
 // The boot chain is promise-driven, so a bounded run of

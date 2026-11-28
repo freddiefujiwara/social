@@ -20,6 +20,7 @@ export const TABS = [
   { id: "youtube", label: "YouTube" },
   { id: "threads", label: "Threads" },
   { id: "x", label: "X" },
+  { id: "tiktok", label: "TikTok" },
 ];
 
 export const DEFAULT_TAB = "overview";

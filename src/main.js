@@ -125,6 +125,7 @@ import {
 } from "./render-blog.js";
 import { createInstagramRenderer } from "./render-instagram.js";
 import { createYoutubeRenderer } from "./render-youtube.js";
+import { createTiktokRenderer } from "./render-tiktok.js";
 import { createThreadsRenderer } from "./render-threads.js";
 import {
   buildXReactionDetail,
@@ -252,6 +253,7 @@ const tabPanels = {
   youtube: document.getElementById("tab-youtube"),
   threads: document.getElementById("tab-threads"),
   x: document.getElementById("tab-x"),
+  tiktok: document.getElementById("tab-tiktok"),
 };
 
 // The tab currently on screen. A channel tab opened before the
@@ -1027,8 +1029,9 @@ function topPostsPendingText(channel) {
 
 // The overview's top lists, one per channel: each channel's
 // three most-viewed items under a heading that names the
-// channel and the metric it reports (再生回数 for Instagram and
-// YouTube, 表示回数 for Threads, X and the blog). The sections
+// channel and the metric it reports (再生回数 for Instagram,
+// YouTube and TikTok, 表示回数 for Threads, X and the blog). The
+// sections
 // come from topPostsByChannel; a channel with nothing collected
 // yet keeps its heading and a "—" row. The blog's rows land
 // with the GA report (overviewState.blogTop), the rest with the
@@ -1306,6 +1309,11 @@ const youtubeView = createYoutubeRenderer({
   fillTotalBoxes,
   fillDetailPending,
   fillScopePending: (el) => fillScopePending(el, "youtube"),
+});
+const tiktokView = createTiktokRenderer({
+  fillTotalBoxes,
+  fillDetailPending,
+  fillScopePending: (el) => fillScopePending(el, "tiktok"),
 });
 const threadsView = createThreadsRenderer();
 
@@ -1722,6 +1730,9 @@ function renderSns(detail) {
   document.getElementById("x-status").textContent = detail.collected_at
     ? `取得時刻: ${formatJstDateTime(detail.collected_at)}`
     : "";
+  document.getElementById("tiktok-status").textContent = detail.collected_at
+    ? `取得時刻: ${formatJstDateTime(detail.collected_at)}`
+    : "";
   instagramView.renderInstagramTotals();
   instagramView.renderInstagramTrend();
   fillTotalBoxes("sns-interactions", snsInteractions(detail));
@@ -1817,6 +1828,7 @@ function renderSns(detail) {
   renderYoutubeHistory();
   renderThreads();
   renderX();
+  tiktokView.renderTiktok(detail);
   const notes = document.getElementById("sns-notes");
   notes.innerHTML = "";
   for (const note of snsErrorNotes(detail)) {
@@ -1927,9 +1939,12 @@ async function loadSns(detailPromise) {
   threadsStatusEl.textContent = "読み込み中…";
   const xStatusEl = document.getElementById("x-status");
   xStatusEl.textContent = "読み込み中…";
+  const tiktokStatusEl = document.getElementById("tiktok-status");
+  tiktokStatusEl.textContent = "読み込み中…";
   youtubeView.renderYoutube(null);
   renderThreads();
   renderX();
+  tiktokView.renderTiktok(null);
   try {
     const detail = await (detailPromise ??
       fetchSnsDetail(CONFIG.GAS_ENDPOINT, auth(), undefined, "overview"));
@@ -1940,6 +1955,7 @@ async function loadSns(detailPromise) {
       youtubeStatusEl.textContent = message;
       threadsStatusEl.textContent = message;
       xStatusEl.textContent = message;
+      tiktokStatusEl.textContent = message;
       settleSnsFailed();
       return;
     }
@@ -1955,6 +1971,7 @@ async function loadSns(detailPromise) {
     youtubeStatusEl.textContent = "SNSデータを取得できませんでした";
     threadsStatusEl.textContent = "SNSデータを取得できませんでした";
     xStatusEl.textContent = "SNSデータを取得できませんでした";
+    tiktokStatusEl.textContent = "SNSデータを取得できませんでした";
     settleSnsFailed();
   }
 }
@@ -1969,6 +1986,7 @@ function settleSnsFailed() {
   youtubeView.renderYoutube(null);
   renderThreads();
   renderX();
+  tiktokView.renderTiktok(null);
 }
 
 // --- SNS trend charts (overview tab) ---
@@ -2101,8 +2119,8 @@ async function refreshSnsData() {
   // The detail refresh follows the scopes the page already
   // holds: the overview scope plus the full section of every
   // channel whose tab has been opened — a channel never opened
-  // is never fetched. Once every channel is loaded the four
-  // scoped reads would reassemble exactly the full snapshot, so
+  // is never fetched. Once every channel is loaded the scoped
+  // reads would reassemble exactly the full snapshot, so
   // a single unscoped fetch refreshes it instead (the pre-scope
   // behaviour). Responses land through applyDetailResponse one
   // by one, so an overview refresh never overwrites a loaded

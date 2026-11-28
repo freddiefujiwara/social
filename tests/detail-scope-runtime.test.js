@@ -341,6 +341,7 @@ describe("scoped SNS detail (runtime)", () => {
           youtube: { subscribers: 10, recent_videos: [] },
           threads: { followers: 300, recent_posts: [] },
           x: { followers: 1800, recent_posts: [] },
+          tiktok: { followers: 80, recent_videos: [] },
         });
       }
       if (params.get("action") === "sns_history") {
